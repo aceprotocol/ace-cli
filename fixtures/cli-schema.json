@@ -1,0 +1,507 @@
+{
+  "name": "ace",
+  "description": "ACE Protocol CLI: post-quantum agent identity, encrypted agent-to-agent messaging and profile-based interaction",
+  "arguments": [],
+  "options": [
+    {
+      "flags": "-V, --version",
+      "description": "output the version number"
+    },
+    {
+      "flags": "--relay <url>",
+      "description": "Home relay URL (default: ACE_RELAY, then config.json)"
+    },
+    {
+      "flags": "--allow-insecure-relay",
+      "description": "Allow an http:// relay URL (development only)"
+    }
+  ],
+  "commands": [
+    {
+      "name": "init",
+      "description": "Create (or import) this identity; keys are sealed with a master key in the OS keystore, master.key or ACE_IDENTITY_KEY",
+      "arguments": [],
+      "options": [
+        {
+          "flags": "--keystore <mode>",
+          "description": "auto (default), os, file or env (ACE_KEYSTORE)"
+        },
+        {
+          "flags": "--next-root <digest>",
+          "description": "Commit an externally held next root (digest printed by \"ace key next-root\")"
+        },
+        {
+          "flags": "--import <file>",
+          "description": "Import an identity export; it is re-keyed away from its previous custodian and published"
+        },
+        {
+          "flags": "--force",
+          "description": "Replace the existing identity (interactive terminal only)"
+        }
+      ],
+      "commands": []
+    },
+    {
+      "name": "key",
+      "description": "This identity's key event log",
+      "arguments": [],
+      "options": [],
+      "commands": [
+        {
+          "name": "show",
+          "description": "Public facts of the key event log (no key material)",
+          "arguments": [],
+          "options": [],
+          "commands": []
+        },
+        {
+          "name": "next-root",
+          "description": "Write a next root key to a new 0600 file (keep it offline) and print the digest to commit",
+          "arguments": [],
+          "options": [
+            {
+              "flags": "--out <file>",
+              "description": "File to create (never overwritten)"
+            }
+          ],
+          "commands": []
+        },
+        {
+          "name": "rotate",
+          "description": "Reveal the committed next root, commit a new one, re-delegate the signing key and publish (stop ace listen first)",
+          "arguments": [],
+          "options": [
+            {
+              "flags": "--next-root <digest>",
+              "description": "Commit an externally held next root instead of generating one"
+            },
+            {
+              "flags": "--root-file <file>",
+              "description": "Reveal an externally held next root (file written by \"ace key next-root\")"
+            }
+          ],
+          "commands": []
+        },
+        {
+          "name": "delegate",
+          "description": "Delegate a fresh signing key and publish (stop ace listen first)",
+          "arguments": [],
+          "options": [
+            {
+              "flags": "--not-after <unix>",
+              "description": "The key expires at this Unix time"
+            }
+          ],
+          "commands": []
+        },
+        {
+          "name": "recover",
+          "description": "After device loss: recover the identity with its externally held next root, install it here and publish",
+          "arguments": [
+            "<aceId>"
+          ],
+          "options": [
+            {
+              "flags": "--root-file <file>",
+              "description": "The next-root file committed by the identity"
+            },
+            {
+              "flags": "--descriptor-file <file>",
+              "description": "A saved PublishedAgent of the identity (required when it is private)"
+            },
+            {
+              "flags": "--keystore <mode>",
+              "description": "auto (default), os, file or env"
+            },
+            {
+              "flags": "--force",
+              "description": "Replace an existing local identity (interactive terminal only)"
+            }
+          ],
+          "commands": []
+        }
+      ]
+    },
+    {
+      "name": "network",
+      "description": "Publish, discover, connect and admit peers",
+      "arguments": [],
+      "options": [],
+      "commands": [
+        {
+          "name": "publish",
+          "description": "Register and publish the signed descriptor (rotates the prekey after 24 h)",
+          "arguments": [],
+          "options": [
+            {
+              "flags": "--out <file>",
+              "description": "Also write the full signed descriptor to a new file, to share out of band"
+            }
+          ],
+          "commands": []
+        },
+        {
+          "name": "configure",
+          "description": "Change what the descriptor declares, then publish",
+          "arguments": [],
+          "options": [
+            {
+              "flags": "--visibility <v>",
+              "description": "private (default; reachable only with a permit) or public (directory, handle, stranger contact requests)"
+            },
+            {
+              "flags": "--handle <name>",
+              "description": "Public handle at the home relay (\"\" clears)"
+            },
+            {
+              "flags": "--name <name>",
+              "description": "Card: display name (\"\" clears)"
+            },
+            {
+              "flags": "--description <text>",
+              "description": "Card: one-line description (\"\" clears)"
+            },
+            {
+              "flags": "--image <url>",
+              "description": "Card: image URL (\"\" clears)"
+            },
+            {
+              "flags": "--tags <tags>",
+              "description": "Card: comma-separated tags"
+            },
+            {
+              "flags": "--profiles <ids>",
+              "description": "Installed profiles: text, commerce and installed manifest IDs (comma-separated)"
+            },
+            {
+              "flags": "--accept-profiles <ids>",
+              "description": "Local policy: accept contact requests for these profile IDs without \"network accept\""
+            },
+            {
+              "flags": "--ext <json>",
+              "description": "Descriptor ext keyed by installed profile ID, e.g. {\"ace:commerce:1\":{\"settlement\":[...]}} (\"\" clears)"
+            },
+            {
+              "flags": "--erc8004 <bindings>",
+              "description": "ERC-8004 bindings <CAIP-10 registry>:<agentId>, comma-separated (\"\" clears)"
+            }
+          ],
+          "commands": []
+        },
+        {
+          "name": "install-profile",
+          "description": "Install a third-party profile manifest (data only; enable it with configure --profiles)",
+          "arguments": [],
+          "options": [
+            {
+              "flags": "--file <path>",
+              "description": "Profile manifest JSON"
+            }
+          ],
+          "commands": []
+        },
+        {
+          "name": "profiles",
+          "description": "Installed profiles with their message types and schema digests",
+          "arguments": [],
+          "options": [],
+          "commands": []
+        },
+        {
+          "name": "discover",
+          "description": "Browse the home relay's public directory",
+          "arguments": [],
+          "options": [
+            {
+              "flags": "--profile <id>",
+              "description": "Only agents declaring this profile"
+            },
+            {
+              "flags": "--cursor <cursor>",
+              "description": "Continuation"
+            },
+            {
+              "flags": "--limit <n>",
+              "description": "Page size (≤ 100)"
+            }
+          ],
+          "commands": []
+        },
+        {
+          "name": "lookup",
+          "description": "Resolve an ACE ID or @handle@relay-host to its verified descriptor",
+          "arguments": [
+            "<target>"
+          ],
+          "options": [],
+          "commands": []
+        },
+        {
+          "name": "import",
+          "description": "Import a shared descriptor or an invitation {agent, permit}",
+          "arguments": [
+            "<file>"
+          ],
+          "options": [],
+          "commands": []
+        },
+        {
+          "name": "invite",
+          "description": "Invite one peer (ACE ID, @handle@relay or its shared descriptor file) to contact this agent; prints {agent, permit} to share privately",
+          "arguments": [
+            "<peer>"
+          ],
+          "options": [
+            {
+              "flags": "--profile <id>",
+              "description": "Profile of the relationship (default ace:text:1)"
+            }
+          ],
+          "commands": []
+        },
+        {
+          "name": "connect",
+          "description": "Send a contact request (ACE ID or @handle@relay-host)",
+          "arguments": [
+            "<target>"
+          ],
+          "options": [
+            {
+              "flags": "--profile <id>",
+              "description": "A profile both sides have installed, e.g. ace:text:1"
+            },
+            {
+              "flags": "--note <text>",
+              "description": "Short note (≤ 512 bytes, encrypted)"
+            },
+            {
+              "flags": "--wait <seconds>",
+              "description": "Then receive (like \"ace inbox\") until the peer answers or <seconds> pass; status admitted with canSend: ace send works now"
+            }
+          ],
+          "commands": []
+        },
+        {
+          "name": "requests",
+          "description": "Pending incoming contact requests",
+          "arguments": [],
+          "options": [],
+          "commands": []
+        },
+        {
+          "name": "peers",
+          "description": "The admission table: admitted, pending and blocked peers",
+          "arguments": [],
+          "options": [],
+          "commands": []
+        },
+        {
+          "name": "accept",
+          "description": "Accept a pending contact request",
+          "arguments": [
+            "<aceId>"
+          ],
+          "options": [],
+          "commands": []
+        },
+        {
+          "name": "reject",
+          "description": "Reject a pending contact request",
+          "arguments": [
+            "<aceId>"
+          ],
+          "options": [],
+          "commands": []
+        },
+        {
+          "name": "block",
+          "description": "Block a peer here and at the home relay",
+          "arguments": [
+            "<aceId>"
+          ],
+          "options": [],
+          "commands": []
+        },
+        {
+          "name": "unblock",
+          "description": "Remove a block",
+          "arguments": [
+            "<aceId>"
+          ],
+          "options": [],
+          "commands": []
+        }
+      ]
+    },
+    {
+      "name": "delegation",
+      "description": "Delegation credentials: an issuer declares that a subject acts on its behalf (grants no authority)",
+      "arguments": [],
+      "options": [],
+      "commands": [
+        {
+          "name": "issue",
+          "description": "Issue a credential naming <subject> (an ACE ID) as acting for this identity",
+          "arguments": [
+            "<subject>"
+          ],
+          "options": [
+            {
+              "flags": "--days <n>",
+              "description": "Lifetime in days (1-7, default 7)"
+            },
+            {
+              "flags": "--out <file>",
+              "description": "Write the credential to a new file instead of stdout"
+            }
+          ],
+          "commands": []
+        },
+        {
+          "name": "add",
+          "description": "Attach a credential issued to this identity to its descriptor and publish",
+          "arguments": [
+            "<file>"
+          ],
+          "options": [],
+          "commands": []
+        }
+      ]
+    },
+    {
+      "name": "send",
+      "description": "Queue an encrypted message of an installed type and try it once (a receipt confirms delivery)",
+      "arguments": [
+        "<to>",
+        "<type>",
+        "<json>"
+      ],
+      "options": [
+        {
+          "flags": "--thread <id>",
+          "description": "Thread ID"
+        }
+      ],
+      "commands": []
+    },
+    {
+      "name": "inbox",
+      "description": "Received messages (pulls the relay first unless a receiver is running)",
+      "arguments": [],
+      "options": [],
+      "commands": [
+        {
+          "name": "list",
+          "description": "Unread messages (all with --all)",
+          "arguments": [],
+          "options": [
+            {
+              "flags": "--all",
+              "description": "Include read messages"
+            },
+            {
+              "flags": "--from <aceId>",
+              "description": "Only from this sender"
+            },
+            {
+              "flags": "--type <type>",
+              "description": "Only this type"
+            },
+            {
+              "flags": "--thread <id>",
+              "description": "Only this thread"
+            },
+            {
+              "flags": "--limit <n>",
+              "description": "At most n messages"
+            }
+          ],
+          "commands": []
+        },
+        {
+          "name": "ack",
+          "description": "Mark a consumed message read (idempotent)",
+          "arguments": [
+            "<from>",
+            "<messageId>"
+          ],
+          "options": [],
+          "commands": []
+        }
+      ]
+    },
+    {
+      "name": "outbox",
+      "description": "Queued sends and their delivery status",
+      "arguments": [],
+      "options": [],
+      "commands": [
+        {
+          "name": "list",
+          "description": "Every entry: pending, delivered, rejected or expired (stopped retrying, outcome unknown; a late receipt still settles it)",
+          "arguments": [],
+          "options": [
+            {
+              "flags": "--status <status>",
+              "description": "Only pending, delivered, rejected or expired"
+            }
+          ],
+          "commands": []
+        },
+        {
+          "name": "retry",
+          "description": "Attempt one pending entry now, or every due one",
+          "arguments": [
+            "[messageId]"
+          ],
+          "options": [],
+          "commands": []
+        },
+        {
+          "name": "abandon",
+          "description": "Stop retrying an entry: it becomes expired (outcome unknown; a late receipt still settles it)",
+          "arguments": [
+            "<messageId>"
+          ],
+          "options": [],
+          "commands": []
+        }
+      ]
+    },
+    {
+      "name": "threads",
+      "description": "Commerce threads (ace:commerce:1) and, with --thread, one thread with the next allowed message types",
+      "arguments": [],
+      "options": [
+        {
+          "flags": "--thread <id>",
+          "description": "One thread: its history, your role and the types you may send next"
+        },
+        {
+          "flags": "--peer <aceId>",
+          "description": "Only threads with this peer"
+        }
+      ],
+      "commands": []
+    },
+    {
+      "name": "listen",
+      "description": "Receive continuously: follow the relay, send receipts, retry the outbox, renew descriptor, prekey and permits",
+      "arguments": [],
+      "options": [],
+      "commands": []
+    },
+    {
+      "name": "mcp",
+      "description": "Run a local MCP stdio server over the resident receiver (keys stay in the local keystore)",
+      "arguments": [],
+      "options": [
+        {
+          "flags": "--allow-admission",
+          "description": "also expose tools that widen admission (accept, unblock, invite) to the model"
+        }
+      ],
+      "commands": []
+    }
+  ]
+}

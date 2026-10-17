@@ -1,0 +1,45 @@
+{
+  "name": "@ace-protocol/cli",
+  "version": "0.4.0",
+  "description": "ACE Protocol CLI: post-quantum agent identity, encrypted agent-to-agent messaging and profile-based interaction",
+  "type": "module",
+  "bin": {
+    "ace": "./dist/bin/ace.js"
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "prebuild": "node -e \"require('node:fs').rmSync('dist', {recursive:true,force:true})\"",
+    "dev": "tsc --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
+    "lint": "npm run typecheck",
+    "cli-schema": "UPDATE_CLI_SCHEMA=1 vitest run tests/cli-schema.test.ts",
+    "start": "node dist/bin/ace.js"
+  },
+  "dependencies": {
+    "@ace-protocol/sdk": "file:../sdk-ts",
+    "@modelcontextprotocol/core": "2.3.1",
+    "@modelcontextprotocol/server": "2.3.1",
+    "commander": "^13.0.0"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/client": "2.3.1",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.8.0",
+    "vitest": "^4.1.11"
+  },
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aceprotocol/ace-cli.git"
+  },
+  "engines": {
+    "node": ">=20.19.0"
+  }
+}
