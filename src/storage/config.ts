@@ -1,13 +1,13 @@
 /**
  * Plain (non-secret) local configuration under the ACE directory:
  * - `config.json`: relay URL, where the master key lives and the random keystore ID naming its OS keystore entry;
- * - `network.json`: what the descriptor declares (visibility, handle, card, profiles, ext, delegations, ERC-8004) and
- *   the local `acceptProfiles` policy;
+ * - `network.json`: what the card record declares (handle, card, pay, contact, listed), what the descriptor declares
+ *   (profiles, ext, delegations, ERC-8004) and the local `acceptProfiles` policy;
  * - `manifests/<sha256(id)>.json`: installed third-party profile manifests.
  */
 import {
   ACEError, BUNDLED_MANIFESTS, FileStore, isCanonicalRelayUrl, normalizeRelayUrl, sha256Hex, validateProfileManifest,
-  type AgentCard, type DescriptorDelegation, type Erc8004Binding, type JSONObject, type ProfileManifest, type Visibility,
+  type AgentCard, type DescriptorDelegation, type Erc8004Binding, type JSONObject, type ProfileManifest, type Contact,
 } from '@ace-protocol/sdk';
 import { join } from 'node:path';
 import { RESOLVED_KEYSTORE_MODES, type ResolvedKeystoreMode } from './keystore-mode.js';
@@ -62,9 +62,18 @@ export function resolveRelayUrl(o: { relay?: string; allowInsecureRelay?: boolea
 // --- network.json ---
 
 export interface NetworkSettings {
-  visibility: Visibility;
+  /** Card record: the handle at the home relay. Set once: after it was published there it can never change. */
   handle?: string;
+  /** The home relay `handle` was published at (recorded after a successful publish); the handle is fixed there. */
+  handleHome?: string;
+  /** Card record: the presentation card. */
   card: AgentCard;
+  /** Card record: CAIP-10 accounts this agent asks to be paid at. */
+  pay?: string[];
+  /** Card record: whether strangers' contact requests are processed. */
+  contact: Contact;
+  /** Card record: whether the home relay's directory lists this identity. */
+  listed: boolean;
   /** Installed profiles: `text`, `commerce` or the ID of a manifest installed with `ace network install-profile`. */
   profiles: string[];
   /** Local policy: contact requests for these profile IDs are accepted without `ace network accept`. */
@@ -74,13 +83,21 @@ export interface NetworkSettings {
   erc8004: Erc8004Binding[];
 }
 
-export const DEFAULT_SETTINGS: NetworkSettings = { visibility: 'private', card: {}, profiles: ['text'], acceptProfiles: [], delegations: [], erc8004: [] };
+export const DEFAULT_SETTINGS: NetworkSettings = {
+  card: {}, contact: 'closed', listed: false, profiles: ['text'], acceptProfiles: [], delegations: [], erc8004: [],
+};
 
+/**
+ * network.json with defaults. A file written before card records (CLI ≤ 0.4) carries `visibility`: `public` reads as
+ * `contact: open` + `listed: true`, `private` as `contact: closed` + `listed: false` (the next save drops it).
+ */
 export async function loadSettings(dir: string): Promise<NetworkSettings> {
   const s = await readJson(dir, 'network.json');
   if (s === null) return structuredClone(DEFAULT_SETTINGS);
   if (!isObj(s)) throw new Error(`${join(dir, 'network.json')} is invalid`);
-  return { ...structuredClone(DEFAULT_SETTINGS), ...s } as NetworkSettings;
+  const { visibility, ...rest } = s;
+  const legacy = visibility === 'public' ? { contact: 'open', listed: true } : visibility === 'private' ? { contact: 'closed', listed: false } : {};
+  return { ...structuredClone(DEFAULT_SETTINGS), ...legacy, ...rest } as NetworkSettings;
 }
 
 export async function saveSettings(dir: string, s: NetworkSettings): Promise<void> { await writeJson(dir, 'network.json', s); }

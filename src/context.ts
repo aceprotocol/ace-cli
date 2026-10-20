@@ -86,7 +86,8 @@ export async function openAgent(o: CommonOptions, mode: 'receive' | 'send', w: O
     ...(o.fetch ? { fetch: o.fetch } : {}), allowLoopbackRelays: isLoopback(relayUrl),
     vault: new StorePrekeyVault(local.raw, { protect: local.ring.protector('prekeys', 'prekeys.json') }),
     foreignRelay: (url: string) => o.fetch ? new RelayClient(url, { fetch: o.fetch }) : publicRelay(url),
-    visibility: settings.visibility, ...(settings.handle ? { handle: settings.handle } : {}), card: settings.card,
+    ...(settings.handle ? { handle: settings.handle } : {}), card: settings.card, ...(settings.pay ? { pay: settings.pay } : {}),
+    contact: settings.contact, listed: settings.listed,
     ...(settings.ext ? { ext: settings.ext } : {}),
     delegations: settings.delegations, // the SDK publishes only the live ones
     erc8004: settings.erc8004, acceptProfiles: settings.acceptProfiles,

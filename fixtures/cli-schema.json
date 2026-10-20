@@ -107,7 +107,7 @@
             },
             {
               "flags": "--descriptor-file <file>",
-              "description": "A saved PublishedAgent of the identity (required when it is private)"
+              "description": "A saved PublishedAgent of the identity (needed when the relay holds neither its live descriptor nor its card record)"
             },
             {
               "flags": "--keystore <mode>",
@@ -130,7 +130,7 @@
       "commands": [
         {
           "name": "publish",
-          "description": "Register and publish the signed descriptor (rotates the prekey after 24 h)",
+          "description": "Register and publish the signed descriptor and card record (rotates the prekey after 24 h)",
           "arguments": [],
           "options": [
             {
@@ -142,16 +142,28 @@
         },
         {
           "name": "configure",
-          "description": "Change what the descriptor declares, then publish",
+          "description": "Change what the card record and descriptor declare, then publish",
           "arguments": [],
           "options": [
             {
-              "flags": "--visibility <v>",
-              "description": "private (default; reachable only with a permit) or public (directory, handle, stranger contact requests)"
+              "flags": "--handle <name>",
+              "description": "Card record: handle at the home relay, set once (it can never change or be removed after it was published there)"
             },
             {
-              "flags": "--handle <name>",
-              "description": "Public handle at the home relay (\"\" clears)"
+              "flags": "--contact <c>",
+              "description": "Card record: open (strangers may send contact requests) or closed (default; only peers you admitted or invited)"
+            },
+            {
+              "flags": "--listed",
+              "description": "Card record: list this identity in the home relay's directory"
+            },
+            {
+              "flags": "--no-listed",
+              "description": "Card record: do not list it (default)"
+            },
+            {
+              "flags": "--pay <accounts>",
+              "description": "Card record: CAIP-10 accounts to be paid at, comma-separated, at most 8 (\"\" clears)"
             },
             {
               "flags": "--name <name>",
@@ -229,7 +241,7 @@
         },
         {
           "name": "lookup",
-          "description": "Resolve an ACE ID or @handle@relay-host to its verified descriptor",
+          "description": "Resolve an ACE ID or @handle@relay-host: its verified descriptor and card record (handle, card, pay, contact, listed)",
           "arguments": [
             "<target>"
           ],

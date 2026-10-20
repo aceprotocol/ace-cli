@@ -237,8 +237,8 @@ export async function runKeyDelegate(o: CommonOptions & { notAfter?: number }) {
 
 /**
  * After device loss: extend the identity's log with the externally held next root (revoking every earlier
- * delegation), install it here and publish. The log comes from `--descriptor-file` (any saved PublishedAgent, required
- * for a private identity) or the relay's public descriptor.
+ * delegation), install it here and publish. The log comes from `--descriptor-file` (any saved PublishedAgent) or the
+ * relay: the identity's descriptor while live, else its card record.
  */
 export async function runKeyRecover(o: InstallOptions & { aceId: string; rootFile: string; descriptorFile?: string }) {
   if (!isACEId(o.aceId)) throw new Error('recover takes the ACE ID to recover');
@@ -249,7 +249,10 @@ export async function runKeyRecover(o: InstallOptions & { aceId: string; rootFil
   } else {
     const relay = relayClient(o, resolveRelayUrl(o, await loadBaseConfig(aceDirOf(o)).catch(() => null)));
     try { kel = (await relay.getDescriptor(o.aceId)).kel; } catch (err) {
-      throw new Error(`cannot read the public descriptor of ${o.aceId} (${(err as Error).message}); a private identity needs --descriptor-file`, { cause: err });
+      // A card record does not expire, so it still carries the log after the descriptor lapsed.
+      try { kel = (await relay.card(o.aceId)).kel; } catch {
+        throw new Error(`cannot read the descriptor or card record of ${o.aceId} (${(err as Error).message}); pass --descriptor-file`, { cause: err });
+      }
     }
   }
   let identity: SoftwareIdentity;
