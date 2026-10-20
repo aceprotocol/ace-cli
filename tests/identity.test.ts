@@ -135,12 +135,25 @@ describe('ace key', () => {
     const tmp = await makeHome(ROOT, 'recover-tmp', relay);
     const { digest } = await tmp.run('key', 'next-root', '--out', nextFile);
     const lost = await makeHome(ROOT, 'recover-lost', relay, ['--next-root', digest]);
-    await lost.run('network', 'configure', '--visibility', 'public');
+    await lost.run('network', 'configure', '--contact', 'open', '--listed');
     const fresh = await makeHome(ROOT, 'recover-new', relay);
     const out = await fresh.run('key', 'recover', lost.aceId, '--root-file', nextFile, '--keystore', 'file', '--force');
     expect(out).toMatchObject({ aceId: lost.aceId, published: true });
     expect((await fresh.run('key', 'show')).aceId).toBe(lost.aceId);
     expect(relay.kels.get(lost.aceId)!.seq).toBe(2); // forked at the epoch start: icp, rot, dlg
+  });
+
+  it('recover reads the log from the card record once the descriptor is gone', async () => {
+    const relay = new FakeRelay();
+    const nextFile = join(ROOT, 'recover-card-root.json');
+    await rm(nextFile, { force: true });
+    const tmp = await makeHome(ROOT, 'recover-card-tmp', relay);
+    const { digest } = await tmp.run('key', 'next-root', '--out', nextFile);
+    const lost = await makeHome(ROOT, 'recover-card-lost', relay, ['--next-root', digest]);
+    await lost.run('network', 'publish');
+    relay.descriptors.delete(lost.aceId); // expired: the card record does not expire
+    const fresh = await makeHome(ROOT, 'recover-card-new', relay);
+    expect(await fresh.run('key', 'recover', lost.aceId, '--root-file', nextFile, '--keystore', 'file', '--force')).toMatchObject({ aceId: lost.aceId, published: true });
   });
 
   it('init --import re-keys an export away from its custodian and publishes it', async () => {

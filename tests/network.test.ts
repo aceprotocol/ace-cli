@@ -15,33 +15,90 @@ async function filesUnder(dir: string): Promise<string[]> {
 }
 
 describe('ace network', () => {
-  it('configure publishes card, visibility, handle, profiles and ERC-8004 bindings; discover and lookup find them', async () => {
+  it('configure publishes the card record (handle, card, pay, contact, listed), profiles and ERC-8004 bindings; discover and lookup find them', async () => {
     const relay = new FakeRelay();
     const alice = await makeHome(ROOT, 'cfg-alice', relay);
     const bob = await makeHome(ROOT, 'cfg-bob', relay);
     const registry = 'eip155:8453:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432';
-    const published = await alice.run('network', 'configure', '--visibility', 'public', '--handle', 'alice', '--name', 'Alice',
-      '--tags', 'translation,legal', '--profiles', 'text,commerce', '--erc8004', `${registry}:42`,
+    const pay = ['eip155:8453:0x1111111111111111111111111111111111111111', 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp:9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin'];
+    const published = await alice.run('network', 'configure', '--contact', 'open', '--listed', '--handle', 'alice', '--name', 'Alice',
+      '--description', 'Translates', '--tags', 'translation,legal', '--pay', pay.join(','), '--profiles', 'text,commerce', '--erc8004', `${registry}:42`,
       '--ext', JSON.stringify({ 'ace:commerce:1': { settlement: [{ method: 'stripe-link' }] } }));
-    expect(published).toMatchObject({ aceId: alice.aceId, visibility: 'public', handle: 'alice', card: { name: 'Alice', tags: ['translation', 'legal'] },
+    expect(published).toMatchObject({ aceId: alice.aceId, handle: 'alice', address: '@alice@relay.test', contact: 'open', listed: true, pay,
+      card: { name: 'Alice', description: 'Translates', tags: ['translation', 'legal'] },
       profiles: [{ id: 'ace:text:1' }, { id: 'ace:commerce:1' }], erc8004: [{ agentRegistry: registry, agentId: '42' }] });
     expect(relay.descriptors.get(alice.aceId)!.descriptor.ext).toEqual({ 'ace:commerce:1': { settlement: [{ method: 'stripe-link' }] } });
+    expect(relay.cards.get(alice.aceId)!.card).toMatchObject({ home: 'https://relay.test', handle: 'alice', contact: 'open', listed: true, pay });
+    expect(relay.handles.get('alice')).toBe(alice.aceId);
 
     // a second publish neither re-registers the unchanged log nor fails
     const before = relay.registrations;
-    await alice.run('network', 'publish');
+    expect(await alice.run('network', 'publish')).toMatchObject({ aceId: alice.aceId, handle: 'alice', contact: 'open' });
     expect(relay.registrations).toBe(before);
 
     expect((await bob.run('network', 'discover', '--profile', 'ace:commerce:1')).agents.map((a: { aceId: string }) => a.aceId)).toEqual([alice.aceId]);
-    expect((await bob.run('network', 'lookup', '@alice@relay.test')).agent.aceId).toBe(alice.aceId);
+    // lookup prints the verified card record, by handle and by ACE ID
+    const card = { home: 'https://relay.test', handle: 'alice', card: { name: 'Alice', description: 'Translates' }, pay, contact: 'open', listed: true };
+    expect(await bob.run('network', 'lookup', '@alice@relay.test')).toMatchObject({ agent: { aceId: alice.aceId }, card });
+    expect(await bob.run('network', 'lookup', alice.aceId)).toMatchObject({ agent: { aceId: alice.aceId }, card });
 
     // invalid settings are refused and never saved
     await expect(alice.run('network', 'configure', '--erc8004', 'not-a-binding')).rejects.toThrow(/erc8004/);
-    await expect(alice.run('network', 'configure', '--visibility', 'private')).rejects.toThrow(/handle/);
+    await expect(alice.run('network', 'configure', '--contact', 'public')).rejects.toThrow(/open or closed/);
+    await expect(alice.run('network', 'configure', '--pay', 'not-an-account')).rejects.toThrow(/CAIP-10/);
+    await expect(alice.run('network', 'configure', '--pay', `${pay[0]},${pay[0]}`)).rejects.toThrow(/distinct/);
     await expect(alice.run('network', 'configure', '--ext', JSON.stringify({ 'urn:x:1': {} }))).rejects.toMatchObject({ code: 'invalid_authorization' });
-    expect(JSON.parse(await readFile(join(alice.dir, 'network.json'), 'utf8')).ext).toEqual({ 'ace:commerce:1': { settlement: [{ method: 'stripe-link' }] } });
-    const cleared = await alice.run('network', 'configure', '--erc8004', '');
+    const saved = JSON.parse(await readFile(join(alice.dir, 'network.json'), 'utf8'));
+    expect(saved).toMatchObject({ ext: { 'ace:commerce:1': { settlement: [{ method: 'stripe-link' }] } }, pay, handle: 'alice', handleHome: 'https://relay.test' });
+    const cleared = await alice.run('network', 'configure', '--erc8004', '', '--pay', '', '--no-listed', '--contact', 'closed');
+    expect(cleared).toMatchObject({ contact: 'closed', listed: false });
     expect(cleared.erc8004).toBeUndefined();
+    expect(cleared.pay).toBeUndefined();
+    expect(relay.cards.get(alice.aceId)!.card).toMatchObject({ handle: 'alice', contact: 'closed', listed: false });
+    expect(relay.cards.get(alice.aceId)!.card.pay).toBeUndefined();
+    // closed and unlisted: not in the directory; lookup still shows the card
+    expect((await bob.run('network', 'discover')).agents).toEqual([]);
+    expect((await bob.run('network', 'lookup', '@alice@relay.test')).card).toMatchObject({ contact: 'closed', listed: false });
+  });
+
+  it('a handle is set once: changing or removing it is refused locally, and the relay refusal is explained', async () => {
+    const relay = new FakeRelay();
+    const alice = await makeHome(ROOT, 'once-alice', relay);
+    const mallory = await makeHome(ROOT, 'once-mallory', relay);
+    await alice.run('network', 'configure', '--handle', 'alice');
+    await alice.run('network', 'configure', '--handle', 'alice', '--name', 'Alice'); // the same handle is fine
+    await expect(alice.run('network', 'configure', '--handle', 'alicia')).rejects.toThrow(/set once per identity.*@alice@relay\.test/);
+    await expect(alice.run('network', 'configure', '--handle', '')).rejects.toThrow(/set once per identity/);
+    expect(JSON.parse(await readFile(join(alice.dir, 'network.json'), 'utf8')).handle).toBe('alice');
+
+    // a taken handle
+    await expect(mallory.run('network', 'configure', '--handle', 'alice')).rejects.toMatchObject({ code: 'handle_taken', message: expect.stringMatching(/@alice@relay\.test belongs to another identity/) });
+    await expect(readFile(join(mallory.dir, 'network.json'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' }); // never saved
+
+    // settings that lost the handle: the relay's invalid_argument names the rule
+    await writeFile(join(alice.dir, 'network.json'), JSON.stringify({ card: { name: 'Alice' } }), { mode: 0o600 });
+    await expect(alice.run('network', 'publish')).rejects.toMatchObject({ code: 'invalid_argument', message: expect.stringMatching(/set once per identity/) });
+    await expect(alice.run('network', 'configure', '--handle', 'alicia')).rejects.toMatchObject({ code: 'invalid_argument', message: expect.stringMatching(/configure exactly that one/) });
+    expect(relay.handles.get('alice')).toBe(alice.aceId);
+    expect(relay.handles.has('alicia')).toBe(false);
+    // the handle it has is accepted again, and fixed locally from then on
+    await alice.run('network', 'configure', '--handle', 'alice');
+    expect(JSON.parse(await readFile(join(alice.dir, 'network.json'), 'utf8')).handleHome).toBe('https://relay.test');
+  });
+
+  it('a network.json written with visibility loads as contact + listed', async () => {
+    const relay = new FakeRelay();
+    const pub = await makeHome(ROOT, 'legacy-public', relay);
+    await writeFile(join(pub.dir, 'network.json'), JSON.stringify({ visibility: 'public', handle: 'legacy', card: { name: 'Old' }, profiles: ['text'] }), { mode: 0o600 });
+    expect(await pub.run('network', 'publish')).toMatchObject({ handle: 'legacy', contact: 'open', listed: true, card: { name: 'Old' } });
+    expect(relay.cards.get(pub.aceId)!.card).toMatchObject({ handle: 'legacy', contact: 'open', listed: true });
+    const priv = await makeHome(ROOT, 'legacy-private', relay);
+    await writeFile(join(priv.dir, 'network.json'), JSON.stringify({ visibility: 'private' }), { mode: 0o600 });
+    const out = await priv.run('network', 'configure', '--name', 'Quiet');
+    expect(out).toMatchObject({ contact: 'closed', listed: false, card: { name: 'Quiet' } });
+    const saved = JSON.parse(await readFile(join(priv.dir, 'network.json'), 'utf8'));
+    expect(saved).toMatchObject({ contact: 'closed', listed: false });
+    expect(saved.visibility).toBeUndefined();
   });
 
   it('installs a third-party profile manifest and lists message digests', async () => {
@@ -62,7 +119,7 @@ describe('ace network', () => {
     const relay = new FakeRelay();
     const alice = await makeHome(ROOT, 'flow-alice', relay);
     const bob = await makeHome(ROOT, 'flow-bob', relay);
-    await alice.run('network', 'configure', '--visibility', 'public', '--handle', 'alice');
+    await alice.run('network', 'configure', '--contact', 'open', '--listed', '--handle', 'alice');
     await bob.run('network', 'publish');
 
     const req = await bob.run('network', 'connect', '@alice@relay.test', '--profile', 'ace:text:1', '--note', 'hello from bob');
@@ -109,13 +166,12 @@ describe('ace network', () => {
     await expect(alice.run('threads')).rejects.toThrow(/commerce profile is not installed/);
   });
 
-  it('private pairing through an invitation', async () => {
+  it('pairing a closed agent through an invitation', async () => {
     const relay = new FakeRelay();
     const carol = await makeHome(ROOT, 'pair-carol', relay);
     const dave = await makeHome(ROOT, 'pair-dave', relay);
     const daveFile = join(dave.dir, 'dave.json');
     await dave.run('network', 'publish', '--out', daveFile);
-    await expect(carol.run('network', 'invite', dave.aceId)).rejects.toThrow(/share its descriptor/);
     const invitation = await carol.run('network', 'invite', daveFile);
     const file = join(dave.dir, 'invitation.json');
     await writeFile(file, JSON.stringify(invitation));
@@ -142,7 +198,7 @@ describe('ace network', () => {
     // a credential for someone else is refused
     await expect(org.run('delegation', 'add', file)).rejects.toMatchObject({ code: 'invalid_authorization' });
 
-    await org.run('network', 'configure', '--visibility', 'public', '--profiles', 'text,commerce', '--accept-profiles', 'ace:commerce:1');
+    await org.run('network', 'configure', '--contact', 'open', '--listed', '--profiles', 'text,commerce', '--accept-profiles', 'ace:commerce:1');
     await bot.run('network', 'configure', '--profiles', 'text,commerce');
     await bot.run('network', 'connect', org.aceId, '--profile', 'ace:commerce:1');
     await org.run('inbox');

@@ -14,7 +14,7 @@ owner accepts peers in a terminal. Every result lists in `untrusted` the paths o
 ```sh
 npm install -g @ace-protocol/cli
 ace init                      # identity; master key in the OS keystore (--keystore auto|os|file|env)
-ace network publish           # register and publish the signed descriptor (private by default)
+ace network publish           # register; publish the descriptor and card record (contact closed, unlisted by default)
 ace listen                    # resident receiver
 ```
 
@@ -24,13 +24,28 @@ prekey (every 24 h) and renews delivery permits through receipts. It reloads whe
 ## Being reachable
 
 ```sh
-ace network configure --visibility public --handle alice --name Alice --tags translation \
-  --profiles text,commerce --accept-profiles ace:text:1 --erc8004 eip155:8453:0xREGISTRY:42
+ace network configure --handle alice --contact open --listed --name Alice --description "Translates" \
+  --tags translation --pay eip155:8453:0xYOURADDRESS --profiles text,commerce --accept-profiles ace:text:1 \
+  --erc8004 eip155:8453:0xREGISTRY:42
 ace network discover --profile ace:commerce:1
-ace network lookup @alice@relay.example
+ace network lookup @alice@relay.example     # or an ACE ID
 ace network connect @alice@relay.example --profile ace:text:1 --note "hello" --wait 60
 ace network requests | accept <aceId> | reject <aceId> | block <aceId> | unblock <aceId> | peers
 ```
+
+What other agents see of you is your **card record**, signed and published at your home relay (`--relay`):
+
+| Option | Card record member |
+|---|---|
+| `--handle <name>` | `handle`: your address `@name@relay-host`. **Set once per identity**: after it was published at a relay it can never change or be removed there (`configure` refuses locally; a relay refuses with `invalid_argument`); a handle someone else holds is `handle_taken` |
+| `--name`, `--description`, `--image`, `--tags` | `card`: presentation (`""` clears one) |
+| `--pay <caip10,...>` | `pay`: up to 8 CAIP-10 accounts you ask to be paid at, e.g. `eip155:8453:0x…` (claimed, not proven; `""` clears) |
+| `--contact open\|closed` | `contact`: `open` lets strangers send contact requests; `closed` (default) means only peers you admitted or invited reach you |
+| `--listed` / `--no-listed` | `listed`: whether the relay's directory (`discover`) lists you (default: not listed) |
+
+`lookup` prints `{agent, card}`: the verified descriptor and card record (`home`, `handle`, `card`, `pay`, `contact`,
+`listed`; no `card` when the peer has none, which counts as closed and unlisted). A `network.json` written by CLI 0.4 or
+earlier with `visibility` still loads: `public` becomes `--contact open --listed`, `private` `--contact closed --no-listed`.
 
 `connect` resolves a handle and prints `{status, aceId, messageId, profile}` (the peer's ACE ID and the request's message ID).
 `connect --wait <seconds>` then receives (like `ace inbox`, or beside a running receiver reads the state it keeps)
@@ -38,9 +53,10 @@ until the peer answers: `status` `admitted` with `canSend: true` means `ace send
 yet (its owner may accept later; `ace inbox` or `ace listen` picks the acceptance up); `rejected` means declined.
 Without a permit `ace send` fails with `not_permitted` and queues nothing.
 
-A private agent is reachable only by peers holding a permit it issued. To pair with a peer privately, the peer shares
-its descriptor (`ace network publish --out peer.json`), you run `ace network invite peer.json` and send it the
-printed invitation `{agent, permit}`; it runs `ace network import invitation.json` and `ace network connect <your ACE ID>`.
+A closed agent is reachable only by peers holding a permit it issued (a closed agent can still `connect` to open ones).
+To pair with a peer offline, the peer shares its descriptor (`ace network publish --out peer.json`), you run
+`ace network invite peer.json` and send it the printed invitation `{agent, permit}`; it runs
+`ace network import invitation.json` and `ace network connect <your ACE ID>`.
 
 Third-party profiles are data: `ace network install-profile --file manifest.json`, then list the ID in
 `--profiles`. `ace network profiles` prints every installed message type with its schema digest.
@@ -78,7 +94,7 @@ build) leaves it out: `FileStore` then fails closed with `storage_failed` instea
 
 `ace key show | rotate | delegate | next-root --out <file>`; `ace init --next-root <digest>` commits a root held
 offline, `ace key recover <aceId> --root-file <file> [--descriptor-file <saved descriptor>]` recovers after device loss
-(a private identity needs its saved descriptor), `ace init --import <export.json>` re-keys an identity exported by
+(the log comes from the relay's descriptor or, once that lapsed, the card record; otherwise pass a saved descriptor), `ace init --import <export.json>` re-keys an identity exported by
 another custodian.
 
 `npm test` never touches the real OS keystore (tests inject an in-memory one); `ACE_TEST_OS_KEYSTORE=1 npm test`

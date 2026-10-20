@@ -89,7 +89,7 @@ export function buildProgram(env: CliEnv = {}): Command {
     .action(action(async (o) => (await identity()).runKeyDelegate(o)));
   key.command('recover <aceId>').description('After device loss: recover the identity with its externally held next root, install it here and publish')
     .requiredOption('--root-file <file>', 'The next-root file committed by the identity')
-    .option('--descriptor-file <file>', 'A saved PublishedAgent of the identity (required when it is private)')
+    .option('--descriptor-file <file>', 'A saved PublishedAgent of the identity (needed when the relay holds neither its live descriptor nor its card record)')
     .option('--keystore <mode>', 'auto (default), os, file or env')
     .option('--force', 'Replace an existing local identity (interactive terminal only)')
     .action(action(async (o, aceId: string) => (await identity()).runKeyRecover({
@@ -99,16 +99,26 @@ export function buildProgram(env: CliEnv = {}): Command {
 
   // --- network ---
   const net = program.command('network').description('Publish, discover, connect and admit peers');
-  net.command('publish').description('Register and publish the signed descriptor (rotates the prekey after 24 h)')
+  net.command('publish').description('Register and publish the signed descriptor and card record (rotates the prekey after 24 h)')
     .option('--out <file>', 'Also write the full signed descriptor to a new file, to share out of band')
     .action(action((o) => withAgent(o, 'send', async (a) => {
-      const { source } = await ops.tool(a, 'ace_network', { action: 'publish' }) as { source: never };
+      const st = await settings();
+      const { loadSettings, saveSettings } = await import('./storage/config.js');
+      const declared = await loadSettings(a.aceDir), relay = a.client.relay.baseUrl;
+      let source: never;
+      try {
+        ({ source } = await ops.tool(a, 'ace_network', { action: 'publish' }) as { source: never });
+      } catch (err) { throw st.explainRefusal(err, declared, relay); }
+      if (declared.handle && declared.handleHome !== relay) await saveSettings(a.aceDir, st.publishedAt(declared, relay));
       if (o.out !== undefined) await writeFile(o.out as string, `${JSON.stringify(source)}\n`, { flag: 'wx', mode: 0o644 });
-      return agentView(a.client, source);
+      return { ...await agentView(a.client, source), ...st.cardOf(declared, relay) };
     })));
-  net.command('configure').description('Change what the descriptor declares, then publish')
-    .option('--visibility <v>', 'private (default; reachable only with a permit) or public (directory, handle, stranger contact requests)')
-    .option('--handle <name>', 'Public handle at the home relay ("" clears)')
+  net.command('configure').description('Change what the card record and descriptor declare, then publish')
+    .option('--handle <name>', 'Card record: handle at the home relay, set once (it can never change or be removed after it was published there)')
+    .option('--contact <c>', 'Card record: open (strangers may send contact requests) or closed (default; only peers you admitted or invited)')
+    .option('--listed', 'Card record: list this identity in the home relay\'s directory')
+    .option('--no-listed', 'Card record: do not list it (default)')
+    .option('--pay <accounts>', 'Card record: CAIP-10 accounts to be paid at, comma-separated, at most 8 ("" clears)', list)
     .option('--name <name>', 'Card: display name ("" clears)')
     .option('--description <text>', 'Card: one-line description ("" clears)')
     .option('--image <url>', 'Card: image URL ("" clears)')
@@ -131,7 +141,7 @@ export function buildProgram(env: CliEnv = {}): Command {
     .option('--cursor <cursor>', 'Continuation')
     .option('--limit <n>', 'Page size (≤ 100)', positiveInt)
     .action(action((o) => sendTool(o, 'ace_network', defined({ action: 'discover', profile: o.profile, cursor: o.cursor, limit: o.limit }))));
-  net.command('lookup <target>').description('Resolve an ACE ID or @handle@relay-host to its verified descriptor')
+  net.command('lookup <target>').description('Resolve an ACE ID or @handle@relay-host: its verified descriptor and card record (handle, card, pay, contact, listed)')
     .action(action((o, target: string) => sendTool(o, 'ace_network', { action: 'lookup', peer: target })));
   net.command('import <file>').description('Import a shared descriptor or an invitation {agent, permit}')
     .action(action(async (o, file: string) => {
@@ -148,7 +158,7 @@ export function buildProgram(env: CliEnv = {}): Command {
         return (await sendTool(o, 'ace_network', defined({ action: 'invite', ...target, profile: o.profile }))).invitation; // the document to share
       } catch (err) {
         if (!named || !(err instanceof ACEError) || err.code !== 'unknown_peer') throw err;
-        throw new ACEError('unknown_peer', 'a private peer must share its descriptor first ("ace network publish --out <file>")', { cause: err });
+        throw new ACEError('unknown_peer', 'the peer has no live descriptor at its relay; it must publish or share its descriptor first ("ace network publish --out <file>")', { cause: err });
       }
     }));
   net.command('connect <target>').description('Send a contact request (ACE ID or @handle@relay-host)')

@@ -1,38 +1,80 @@
 /**
  * What this identity declares: `ace network configure | install-profile` and `ace delegation issue | add`. Every
- * change is published, then saved to network.json; a change the descriptor rules refuse is never saved.
+ * change is published (descriptor, then card record), then saved to network.json; a change the descriptor or card
+ * record rules refuse is never saved.
  */
 import {
-  ACEError, createDelegationCredential, MAX_DELEGATION_LIFETIME, isHandle, MAX_DESCRIPTOR_DELEGATIONS, MAX_DESCRIPTOR_ERC8004,
-  validateCard, validateErc8004Binding, type AgentCard, type DescriptorDelegation, type Erc8004Binding,
-  type JSONObject, type Visibility,
+  ACEError, createDelegationCredential, MAX_DELEGATION_LIFETIME, isCaip10Account, isHandle, MAX_DESCRIPTOR_DELEGATIONS,
+  MAX_DESCRIPTOR_ERC8004, MAX_PAY_ACCOUNTS, validateCard, validateErc8004Binding, type AgentCard, type DescriptorDelegation,
+  type ACEErrorCode, type Erc8004Binding, type JSONObject,
 } from '@ace-protocol/sdk';
 import { writeFile } from 'node:fs/promises';
 import { agentView } from '@ace-protocol/sdk/tools';
 import { aceDirOf, openLocal, withAgent, type CommonOptions, type Local } from './context.js';
 import { profiles } from './ops.js';
 import { readBoundedJson } from './storage/bounded-json.js';
-import { installManifest, loadSettings, saveSettings, type NetworkSettings } from './storage/config.js';
+import { installManifest, loadBaseConfig, loadSettings, resolveRelayUrl, saveSettings, type NetworkSettings } from './storage/config.js';
 
-/** Publish `next` and save it; a change the descriptor rules refuse is not saved, one not yet published is. */
+const SET_ONCE = 'handles are set once per identity: once published at a home relay, a handle can never be changed or removed there';
+
+/** The card record a settings file declares at `relay` (the shape `ace_identity` reports). */
+export function cardOf(s: NetworkSettings, relay: string) {
+  return {
+    ...(s.handle ? { handle: s.handle, address: `@${s.handle}@${new URL(relay).host}` } : {}), card: s.card,
+    ...(s.pay ? { pay: s.pay } : {}), contact: s.contact, listed: s.listed,
+  };
+}
+
+/** `s` after a successful publish at `relay`: a handle published there is fixed there. */
+export function publishedAt(s: NetworkSettings, relay: string): NetworkSettings {
+  const next = { ...s };
+  if (next.handle) next.handleHome = relay; else delete next.handleHome;
+  return next;
+}
+
+/**
+ * A publish the relay refused, explained (the relay's code becomes the error code): a taken handle, or a card record
+ * without the handle this identity already has at that relay (set once: `invalid_argument`).
+ */
+export function explainRefusal(err: unknown, s: NetworkSettings, relay: string): unknown {
+  if (!(err instanceof ACEError) || err.code !== 'relay_rejected') return err;
+  const host = new URL(relay).host;
+  const opts = { cause: err, ...(err.status !== undefined ? { status: err.status } : {}), relayCode: err.relayCode };
+  if (err.relayCode === 'handle_taken' && s.handle) {
+    return new ACEError('handle_taken' as ACEErrorCode, `@${s.handle}@${host} belongs to another identity; choose another with --handle`, opts);
+  }
+  if (err.relayCode === 'invalid_argument') {
+    return new ACEError('invalid_argument', `${relay} refused the card record (${err.detail}): ${SET_ONCE}. `
+      + 'If this identity already has a handle there, configure exactly that one (ace network configure --handle <name>)', opts);
+  }
+  return err;
+}
+
+/** Publish `next` and save it; a change the descriptor or card record rules refuse is not saved, one not yet published is. */
 async function apply(o: CommonOptions, next: NetworkSettings, local?: Local) {
   const aceDir = aceDirOf(o);
-  let published;
+  let published, relay = '';
   try {
-    published = await withAgent(o, 'send', async (a) => agentView(a.client, await a.client.publish()), { settings: next, ...(local ? { local } : {}) });
+    published = await withAgent(o, 'send', async (a) => {
+      relay = a.client.relay.baseUrl;
+      return { ...await agentView(a.client, await a.client.publish()), ...cardOf(next, relay) };
+    }, { settings: next, ...(local ? { local } : {}) });
   } catch (err) {
-    if (err instanceof ACEError && !err.isTransient) throw err;
+    if (err instanceof ACEError && !err.isTransient) throw relay ? explainRefusal(err, next, relay) : err;
     await saveSettings(aceDir, next);
     console.error(`WARNING: settings saved but not published (${(err as Error).message}); run "ace network publish".`);
     return { saved: true, published: false };
   }
-  await saveSettings(aceDir, next);
+  await saveSettings(aceDir, publishedAt(next, relay));
   return published;
 }
 
 export interface ConfigureFlags {
-  visibility?: string;
   handle?: string;
+  contact?: string;
+  listed?: boolean;
+  /** CAIP-10 accounts; an empty list clears. */
+  pay?: string[];
   name?: string;
   description?: string;
   image?: string;
@@ -55,17 +97,33 @@ export function parseErc8004(value: string): Erc8004Binding {
 }
 
 export async function runConfigure(o: CommonOptions & ConfigureFlags) {
-  const s = await loadSettings(aceDirOf(o));
-  if (o.visibility !== undefined) {
-    if (o.visibility !== 'private' && o.visibility !== 'public') throw new ACEError('invalid_argument', '--visibility is private or public');
-    s.visibility = o.visibility as Visibility;
-  }
+  const aceDir = aceDirOf(o);
+  const s = await loadSettings(aceDir);
   if (o.handle !== undefined) {
-    if (o.handle === '') delete s.handle;
-    else if (!isHandle(o.handle)) throw new ACEError('invalid_argument', '--handle must match [a-z][a-z0-9_-]{2,31}');
-    else s.handle = o.handle;
+    const want = o.handle === '' ? undefined : o.handle;
+    if (want !== undefined && !isHandle(want)) throw new ACEError('invalid_argument', '--handle must match [a-z][a-z0-9_-]{2,31}');
+    const relay = resolveRelayUrl(o, await loadBaseConfig(aceDir));
+    if (s.handle !== undefined && s.handleHome === relay && want !== s.handle) {
+      throw new ACEError('invalid_argument', `${SET_ONCE}; this identity's handle at ${relay} is @${s.handle}@${new URL(relay).host}`);
+    }
+    if (want === undefined) { delete s.handle; delete s.handleHome; } else if (want !== s.handle) { s.handle = want; delete s.handleHome; }
   }
-  if (s.handle && s.visibility !== 'public') throw new ACEError('invalid_argument', 'a handle needs --visibility public');
+  if (o.contact !== undefined) {
+    if (o.contact !== 'open' && o.contact !== 'closed') throw new ACEError('invalid_argument', '--contact is open or closed');
+    s.contact = o.contact;
+  }
+  if (o.listed !== undefined) s.listed = o.listed;
+  if (o.pay !== undefined) {
+    if (o.pay.length === 0) delete s.pay;
+    else {
+      const bad = o.pay.find((p) => !isCaip10Account(p));
+      if (bad !== undefined) throw new ACEError('invalid_argument', `--pay takes CAIP-10 accounts <namespace>:<chain>:<address>, e.g. eip155:8453:0x… (got "${bad.slice(0, 160)}")`);
+      if (o.pay.length > MAX_PAY_ACCOUNTS || new Set(o.pay).size !== o.pay.length) {
+        throw new ACEError('invalid_argument', `--pay takes 1-${MAX_PAY_ACCOUNTS} distinct accounts`);
+      }
+      s.pay = o.pay;
+    }
+  }
   const card: AgentCard = { ...s.card };
   for (const k of ['name', 'description', 'image'] as const) {
     if (o[k] === '') delete card[k]; else if (o[k] !== undefined) card[k] = o[k];

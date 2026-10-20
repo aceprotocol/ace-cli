@@ -31,7 +31,7 @@ describe('ace listen and ace mcp', () => {
     const relay = new FakeRelay();
     const alice = await makeHome(ROOT, 'alice', relay);
     const bob = await makeHome(ROOT, 'bob', relay);
-    await alice.run('network', 'configure', '--visibility', 'public', '--handle', 'alice', '--accept-profiles', 'ace:text:1');
+    await alice.run('network', 'configure', '--contact', 'open', '--listed', '--handle', 'alice', '--accept-profiles', 'ace:text:1');
     await bob.run('network', 'publish');
 
     const listener = await startListener({ aceDir: alice.dir, fetch: relay.fetch, relay: RELAY, maintainMs: 200, retryMs: 50, log: () => {}, warn: () => {} });
@@ -73,7 +73,7 @@ describe('ace listen and ace mcp', () => {
 
       // settings changes are picked up by the running receiver
       await alice.run('network', 'configure', '--name', 'Alice Two');
-      await waitFor(() => relay.descriptors.get(alice.aceId)!.descriptor.card.name === 'Alice Two');
+      await waitFor(() => relay.cards.get(alice.aceId)?.card.card.name === 'Alice Two');
       await waitFor(async () => text(await mcp.callTool({ name: 'ace_identity', arguments: {} })).card.name === 'Alice Two');
 
       // key changes need the receiver stopped
@@ -92,7 +92,7 @@ describe('ace network connect --wait', () => {
     const alice = await makeHome(ROOT, 'wait-alice', relay);
     const bob = await makeHome(ROOT, 'wait-bob', relay);
     const carol = await makeHome(ROOT, 'wait-carol', relay);
-    await alice.run('network', 'configure', '--visibility', 'public', '--handle', 'alice', '--accept-profiles', 'ace:text:1');
+    await alice.run('network', 'configure', '--contact', 'open', '--listed', '--handle', 'alice', '--accept-profiles', 'ace:text:1');
     await bob.run('network', 'publish');
     await carol.run('network', 'publish');
     const aliceRx = await startListener({ aceDir: alice.dir, fetch: relay.fetch, relay: RELAY, maintainMs: 200, retryMs: 50, log: () => {}, warn: () => {} });
@@ -115,7 +115,7 @@ describe('ace network connect --wait', () => {
     const relay = new FakeRelay();
     const alice = await makeHome(ROOT, 'wait-pending-alice', relay);
     const bob = await makeHome(ROOT, 'wait-pending-bob', relay);
-    await alice.run('network', 'configure', '--visibility', 'public');
+    await alice.run('network', 'configure', '--contact', 'open', '--listed');
     await bob.run('network', 'publish');
     const started = Date.now();
     expect(await bob.run('network', 'connect', alice.aceId, '--profile', 'ace:text:1', '--wait', '1'))
@@ -160,7 +160,7 @@ describe('ace mcp tool table', () => {
     const relay = new FakeRelay();
     const alice = await makeHome(ROOT, 'rekey-alice', relay);
     const bob = await makeHome(ROOT, 'rekey-bob', relay);
-    await alice.run('network', 'configure', '--visibility', 'public', '--accept-profiles', 'ace:text:1');
+    await alice.run('network', 'configure', '--contact', 'open', '--listed', '--accept-profiles', 'ace:text:1');
     await bob.run('network', 'publish');
     await bob.run('network', 'connect', alice.aceId, '--profile', 'ace:text:1');
     await alice.run('inbox');
