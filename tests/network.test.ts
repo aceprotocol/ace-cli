@@ -77,13 +77,42 @@ describe('ace network', () => {
 
     // settings that lost the handle: the relay's invalid_argument names the rule
     await writeFile(join(alice.dir, 'network.json'), JSON.stringify({ card: { name: 'Alice' } }), { mode: 0o600 });
-    await expect(alice.run('network', 'publish')).rejects.toMatchObject({ code: 'invalid_argument', message: expect.stringMatching(/set once per identity/) });
+    // with no handle in the request nor set before, the relay's answer stands as is
+    const lost = await alice.run('network', 'publish').then(() => null, (e: unknown) => e as { code: string; relayCode: string; message: string });
+    expect(lost).toMatchObject({ code: 'relay_rejected', relayCode: 'invalid_argument' });
+    expect(lost!.message).not.toMatch(/set once/);
     await expect(alice.run('network', 'configure', '--handle', 'alicia')).rejects.toMatchObject({ code: 'invalid_argument', message: expect.stringMatching(/configure exactly that one/) });
     expect(relay.handles.get('alice')).toBe(alice.aceId);
     expect(relay.handles.has('alicia')).toBe(false);
     // the handle it has is accepted again, and fixed locally from then on
     await alice.run('network', 'configure', '--handle', 'alice');
     expect(JSON.parse(await readFile(join(alice.dir, 'network.json'), 'utf8')).handleHome).toBe('https://relay.test');
+  });
+
+  it('the first successful handle claim prints that it is permanent, once', async () => {
+    const relay = new FakeRelay();
+    const alice = await makeHome(ROOT, 'claim-alice', relay);
+    const notice = /^@alice@relay\.test is yours for good — handles never change$/;
+    vi.mocked(console.error).mockClear();
+    const lines = () => vi.mocked(console.error).mock.calls.map((c) => String(c[0])).filter((l) => notice.test(l));
+    await alice.run('network', 'configure', '--name', 'Alice');
+    expect(lines()).toHaveLength(0);
+    await alice.run('network', 'configure', '--handle', 'alice');
+    expect(lines()).toHaveLength(1);
+    await alice.run('network', 'configure', '--handle', 'alice', '--name', 'Alice A');
+    await alice.run('network', 'publish');
+    expect(lines()).toHaveLength(1);
+  });
+
+  it('a refusal is explained as the set-once rule only when a handle is involved', async () => {
+    const { explainRefusal } = await import('../src/settings.js');
+    const { ACEError } = await import('@ace-protocol/sdk');
+    const refusal = () => new ACEError('relay_rejected', 'relay rejected', { status: 400, relayCode: 'invalid_argument' });
+    const base = { card: {}, contact: 'closed', listed: false, profiles: ['text'], acceptProfiles: [], delegations: [] } as never;
+    const R = 'https://relay.test';
+    expect(explainRefusal(refusal(), base, R)).toMatchObject({ code: 'relay_rejected' });
+    expect(explainRefusal(refusal(), { ...(base as object), handle: 'alice' } as never, R)).toMatchObject({ code: 'invalid_argument', message: expect.stringMatching(/set once/) });
+    expect(explainRefusal(refusal(), base, R, { ...(base as object), handle: 'alice' } as never)).toMatchObject({ code: 'invalid_argument', message: expect.stringMatching(/set once/) });
   });
 
   it('a network.json written with visibility loads as contact + listed', async () => {

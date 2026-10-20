@@ -109,7 +109,10 @@ export function buildProgram(env: CliEnv = {}): Command {
       try {
         ({ source } = await ops.tool(a, 'ace_network', { action: 'publish' }) as { source: never });
       } catch (err) { throw st.explainRefusal(err, declared, relay); }
-      if (declared.handle && declared.handleHome !== relay) await saveSettings(a.aceDir, st.publishedAt(declared, relay));
+      if (declared.handle && declared.handleHome !== relay) {
+        st.noteClaim(declared, relay);
+        await saveSettings(a.aceDir, st.publishedAt(declared, relay));
+      }
       if (o.out !== undefined) await writeFile(o.out as string, `${JSON.stringify(source)}\n`, { flag: 'wx', mode: 0o644 });
       return { ...await agentView(a.client, source), ...st.cardOf(declared, relay) };
     })));
