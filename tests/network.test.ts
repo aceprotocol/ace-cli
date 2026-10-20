@@ -104,6 +104,16 @@ describe('ace network', () => {
     expect(lines()).toHaveLength(1);
   });
 
+  it('no claim notice at a relay whose public URL has a path (it binds no handle)', async () => {
+    const { noteClaim } = await import('../src/settings.js');
+    const s = { card: {}, contact: 'closed', listed: false, profiles: ['text'], acceptProfiles: [], delegations: [], handle: 'alice' } as never;
+    vi.mocked(console.error).mockClear();
+    noteClaim(s, 'https://relay.test/ace');
+    expect(vi.mocked(console.error)).not.toHaveBeenCalled();
+    noteClaim(s, 'https://relay.test');
+    expect(vi.mocked(console.error)).toHaveBeenCalledTimes(1);
+  });
+
   it('a refusal is explained as the set-once rule only when a handle is involved', async () => {
     const { explainRefusal } = await import('../src/settings.js');
     const { ACEError } = await import('@ace-protocol/sdk');

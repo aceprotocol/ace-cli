@@ -137,6 +137,10 @@ describe('ace key', () => {
     const lost = await makeHome(ROOT, 'recover-lost', relay, ['--next-root', digest]);
     await lost.run('network', 'configure', '--contact', 'open', '--listed');
     const fresh = await makeHome(ROOT, 'recover-new', relay);
+    // The recovered card record differs from the lost one's: signed in the same second, the relay refuses it as
+    // stale_descriptor (equal issuedAt, other claims; 04 § Card record). Recover in a later second.
+    const second = Math.floor(Date.now() / 1000);
+    while (Math.floor(Date.now() / 1000) === second) await new Promise((r) => setTimeout(r, 20));
     const out = await fresh.run('key', 'recover', lost.aceId, '--root-file', nextFile, '--keystore', 'file', '--force');
     expect(out).toMatchObject({ aceId: lost.aceId, published: true });
     expect((await fresh.run('key', 'show')).aceId).toBe(lost.aceId);

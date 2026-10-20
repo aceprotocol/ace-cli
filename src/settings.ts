@@ -37,9 +37,12 @@ export function claimNotice(handle: string, relay: string): string {
   return `@${handle}@${new URL(relay).host} is yours for good — handles never change`;
 }
 
-/** Print `claimNotice` (stderr) when the publish at `relay` that just succeeded claimed `s.handle` there first. */
+/**
+ * Print `claimNotice` (stderr) when the publish at `relay` that just succeeded claimed `s.handle` there first. A relay
+ * whose public URL has a path binds no handle (handles resolve at https://host, 04 § Card record): nothing was claimed.
+ */
 export function noteClaim(s: NetworkSettings, relay: string): void {
-  if (s.handle && s.handleHome !== relay) console.error(claimNotice(s.handle, relay));
+  if (s.handle && s.handleHome !== relay && new URL(relay).pathname === '/') console.error(claimNotice(s.handle, relay));
 }
 
 /**
