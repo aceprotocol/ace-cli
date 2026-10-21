@@ -112,9 +112,10 @@ export async function runInit(o: InitOptions = {}) {
 }
 
 /**
- * A recovered or imported identity's network.json (removed with the replaced identity) starts from its card record at
- * the relay. Publishing the defaults instead would reset the record, and a relay refuses a record without the
- * identity's set-once handle, before the descriptor carrying the new log is posted.
+ * A recovered or imported identity's network.json (removed with the replaced identity) takes the set-once handle of
+ * its card record at the relay: a relay refuses a record without it, before the descriptor carrying the new log is
+ * posted. Nothing else is adopted: whoever held the replaced keys may have signed that record (its pay accounts, its
+ * card), so the rest starts closed and unlisted and is only shown, to re-declare with "ace network configure".
  */
 async function restoreCardRecord(o: CommonOptions, aceId: string): Promise<void> {
   const aceDir = aceDirOf(o);
@@ -122,13 +123,16 @@ async function restoreCardRecord(o: CommonOptions, aceId: string): Promise<void>
   let r;
   try { r = (await relayClient(o, relay).card(aceId)).card; } catch (err) {
     if (err instanceof ACEError && err.code === 'unknown_peer') return; // never published there
-    console.error(`WARNING: cannot read the card record of ${aceId} (${(err as Error).message}); restore it with "ace network configure" (an existing handle exactly) before publishing.`);
+    console.error(`WARNING: cannot read the card record of ${aceId} (${(err as Error).message}); configure its handle, if it has one, before publishing (ace network configure --handle <name>).`);
     return;
   }
-  const s = await loadSettings(aceDir);
   // The handle is bound in its home's namespace only: carried over (and fixed) when that home is this relay.
-  const handle = r.handle !== undefined && r.home === relay ? { handle: r.handle, handleHome: relay } : {};
-  await saveSettings(aceDir, { ...s, ...handle, card: r.card, contact: r.contact, listed: r.listed, ...(r.pay ? { pay: r.pay } : {}) });
+  if (r.handle !== undefined && r.home === relay) {
+    await saveSettings(aceDir, { ...await loadSettings(aceDir), handle: r.handle, handleHome: relay });
+  }
+  const unverified = { card: r.card, ...(r.pay ? { pay: r.pay } : {}), contact: r.contact, listed: r.listed };
+  console.error(`The relay's card record also declared ${JSON.stringify(unverified)}; it may have been signed with the replaced keys, so `
+    + 'none of it is republished (closed, unlisted, no card or pay): re-declare what is yours with "ace network configure".');
 }
 
 async function tryPublish(o: CommonOptions): Promise<boolean> {

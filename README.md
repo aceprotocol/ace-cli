@@ -94,7 +94,7 @@ build) leaves it out: `FileStore` then fails closed with `storage_failed` instea
 
 `ace key show | rotate | delegate | next-root --out <file>`; `ace init --next-root <digest>` commits a root held
 offline, `ace key recover <aceId> --root-file <file> [--descriptor-file <saved descriptor>]` recovers after device loss
-(the log comes from the relay's descriptor or, once that lapsed, the card record; otherwise pass a saved descriptor; the card record, handle included, is restored from the relay; so is an imported identity's), `ace init --import <export.json>` re-keys an identity exported by
+(the log comes from the relay's descriptor or, once that lapsed, the card record; otherwise pass a saved descriptor; the card record's set-once handle is kept, and nothing else of it: re-declare the rest with `configure`, as the replaced keys may have signed it; likewise for an imported identity), `ace init --import <export.json>` re-keys an identity exported by
 another custodian.
 
 `npm test` never touches the real OS keystore (tests inject an in-memory one); `ACE_TEST_OS_KEYSTORE=1 npm test`

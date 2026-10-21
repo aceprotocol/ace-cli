@@ -160,20 +160,21 @@ describe('ace key', () => {
     expect(await fresh.run('key', 'recover', lost.aceId, '--root-file', nextFile, '--keystore', 'file', '--force')).toMatchObject({ aceId: lost.aceId, published: true });
   });
 
-  it('recover restores the card record: the set-once handle, card, contact and listing', async () => {
+  it('recover keeps the set-once handle of the card record and adopts nothing else from it', async () => {
     const relay = new FakeRelay();
     const nextFile = join(ROOT, 'recover-handle-root.json');
     await rm(nextFile, { force: true });
     const tmp = await makeHome(ROOT, 'recover-handle-tmp', relay);
     const { digest } = await tmp.run('key', 'next-root', '--out', nextFile);
     const lost = await makeHome(ROOT, 'recover-handle-lost', relay, ['--next-root', digest]);
-    await lost.run('network', 'configure', '--handle', 'alice', '--contact', 'open', '--listed', '--name', 'Alice');
+    await lost.run('network', 'configure', '--handle', 'alice', '--contact', 'open', '--listed', '--name', 'Alice', '--pay', 'eip155:8453:0x0000000000000000000000000000000000000001');
     const fresh = await makeHome(ROOT, 'recover-handle-new', relay);
     const second = Math.floor(Date.now() / 1000);
     while (Math.floor(Date.now() / 1000) === second) await new Promise((r) => setTimeout(r, 20));
     expect(await fresh.run('key', 'recover', lost.aceId, '--root-file', nextFile, '--keystore', 'file', '--force')).toMatchObject({ published: true });
     expect(relay.kels.get(lost.aceId)!.seq).toBe(2);
-    expect(relay.cards.get(lost.aceId)!.card).toMatchObject({ handle: 'alice', contact: 'open', listed: true, card: { name: 'Alice' } });
+    expect(relay.cards.get(lost.aceId)!.card).toMatchObject({ handle: 'alice', contact: 'closed', listed: false, card: {} });
+    expect(vi.mocked(console.error).mock.calls.flat().join('\n')).toMatch(/"name":"Alice".*re-declare/s);
     await expect(fresh.run('network', 'configure', '--handle', 'bob')).rejects.toThrow(/set once/);
   });
 
