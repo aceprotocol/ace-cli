@@ -11,7 +11,7 @@ import { open, rm, unlink, type FileHandle } from 'node:fs/promises';
 import { join } from 'node:path';
 import { aceDirOf, busyAs, openLocal, relayClient, withAgent, type CommonOptions } from './context.js';
 import { readBoundedJson } from './storage/bounded-json.js';
-import { loadBaseConfig, resolveRelayUrl, saveBaseConfig } from './storage/config.js';
+import { loadBaseConfig, loadSettings, resolveRelayUrl, saveBaseConfig, saveSettings } from './storage/config.js';
 import {
   createKeyRing, destroyKeys, identityExists, loadIdentity, loadKeyRing, newKeystoreId, resolveProcessKeystoreMode, saveIdentity,
 } from './storage/keychain.js';
@@ -104,8 +104,31 @@ export async function runInit(o: InitOptions = {}) {
   await installIdentity(o, identity, o.importFile !== undefined ? { importing: identity.getACEId() } : undefined);
   const result = { aceId: identity.getACEId(), nextRoot: nextRootHeld(identity), imported: o.importFile !== undefined };
   // An import is re-keyed: the previous custodian's keys stay current at the relay until the new log is registered.
-  if (o.importFile !== undefined) return { ...result, published: await tryPublish(o) };
+  if (o.importFile !== undefined) {
+    await restoreCardRecord(o, result.aceId);
+    return { ...result, published: await tryPublish(o) };
+  }
   return result;
+}
+
+/**
+ * A recovered or imported identity's network.json (removed with the replaced identity) starts from its card record at
+ * the relay. Publishing the defaults instead would reset the record, and a relay refuses a record without the
+ * identity's set-once handle, before the descriptor carrying the new log is posted.
+ */
+async function restoreCardRecord(o: CommonOptions, aceId: string): Promise<void> {
+  const aceDir = aceDirOf(o);
+  const relay = resolveRelayUrl(o, await loadBaseConfig(aceDir));
+  let r;
+  try { r = (await relayClient(o, relay).card(aceId)).card; } catch (err) {
+    if (err instanceof ACEError && err.code === 'unknown_peer') return; // never published there
+    console.error(`WARNING: cannot read the card record of ${aceId} (${(err as Error).message}); restore it with "ace network configure" (an existing handle exactly) before publishing.`);
+    return;
+  }
+  const s = await loadSettings(aceDir);
+  // The handle is bound in its home's namespace only: carried over (and fixed) when that home is this relay.
+  const handle = r.handle !== undefined && r.home === relay ? { handle: r.handle, handleHome: relay } : {};
+  await saveSettings(aceDir, { ...s, ...handle, card: r.card, contact: r.contact, listed: r.listed, ...(r.pay ? { pay: r.pay } : {}) });
 }
 
 async function tryPublish(o: CommonOptions): Promise<boolean> {
@@ -263,6 +286,7 @@ export async function runKeyRecover(o: InstallOptions & { aceId: string; rootFil
   }
   if (identity.getACEId() !== o.aceId) throw new ACEError('invalid_argument', 'the key event log names another identity');
   await installIdentity(o, identity, { recovering: o.aceId });
+  await restoreCardRecord(o, o.aceId);
   return { aceId: o.aceId, seq: stateOf(identity).seq, published: await tryPublish(o) };
 }
 

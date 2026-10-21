@@ -1,6 +1,4 @@
 import { ACEError, type JSONObject } from '@ace-protocol/sdk';
-import { agentView } from '@ace-protocol/sdk/tools';
-import { writeFile } from 'node:fs/promises';
 import { Command, InvalidArgumentError } from 'commander';
 import pkg from '../package.json' with { type: 'json' };
 import { withAgent, withReceiving, type CommonOptions } from './context.js';
@@ -101,21 +99,7 @@ export function buildProgram(env: CliEnv = {}): Command {
   const net = program.command('network').description('Publish, discover, connect and admit peers');
   net.command('publish').description('Register and publish the signed descriptor and card record (rotates the prekey after 24 h)')
     .option('--out <file>', 'Also write the full signed descriptor to a new file, to share out of band')
-    .action(action((o) => withAgent(o, 'send', async (a) => {
-      const st = await settings();
-      const { loadSettings, saveSettings } = await import('./storage/config.js');
-      const declared = await loadSettings(a.aceDir), relay = a.client.relay.baseUrl;
-      let source: never;
-      try {
-        ({ source } = await ops.tool(a, 'ace_network', { action: 'publish' }) as { source: never });
-      } catch (err) { throw st.explainRefusal(err, declared, relay); }
-      if (declared.handle && declared.handleHome !== relay) {
-        st.noteClaim(declared, relay);
-        await saveSettings(a.aceDir, st.publishedAt(declared, relay));
-      }
-      if (o.out !== undefined) await writeFile(o.out as string, `${JSON.stringify(source)}\n`, { flag: 'wx', mode: 0o644 });
-      return { ...await agentView(a.client, source), ...st.cardOf(declared, relay) };
-    })));
+    .action(action(async (o) => (await settings()).runPublish(o)));
   net.command('configure').description('Change what the card record and descriptor declare, then publish')
     .option('--handle <name>', 'Card record: handle at the home relay, set once (it can never change or be removed after it was published there)')
     .option('--contact <c>', 'Card record: open (strangers may send contact requests) or closed (default; only peers you admitted or invited)')

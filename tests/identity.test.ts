@@ -160,6 +160,23 @@ describe('ace key', () => {
     expect(await fresh.run('key', 'recover', lost.aceId, '--root-file', nextFile, '--keystore', 'file', '--force')).toMatchObject({ aceId: lost.aceId, published: true });
   });
 
+  it('recover restores the card record: the set-once handle, card, contact and listing', async () => {
+    const relay = new FakeRelay();
+    const nextFile = join(ROOT, 'recover-handle-root.json');
+    await rm(nextFile, { force: true });
+    const tmp = await makeHome(ROOT, 'recover-handle-tmp', relay);
+    const { digest } = await tmp.run('key', 'next-root', '--out', nextFile);
+    const lost = await makeHome(ROOT, 'recover-handle-lost', relay, ['--next-root', digest]);
+    await lost.run('network', 'configure', '--handle', 'alice', '--contact', 'open', '--listed', '--name', 'Alice');
+    const fresh = await makeHome(ROOT, 'recover-handle-new', relay);
+    const second = Math.floor(Date.now() / 1000);
+    while (Math.floor(Date.now() / 1000) === second) await new Promise((r) => setTimeout(r, 20));
+    expect(await fresh.run('key', 'recover', lost.aceId, '--root-file', nextFile, '--keystore', 'file', '--force')).toMatchObject({ published: true });
+    expect(relay.kels.get(lost.aceId)!.seq).toBe(2);
+    expect(relay.cards.get(lost.aceId)!.card).toMatchObject({ handle: 'alice', contact: 'open', listed: true, card: { name: 'Alice' } });
+    await expect(fresh.run('network', 'configure', '--handle', 'bob')).rejects.toThrow(/set once/);
+  });
+
   it('init --import re-keys an export away from its custodian and publishes it', async () => {
     const relay = new FakeRelay();
     const exported = await SoftwareIdentity.generate();
