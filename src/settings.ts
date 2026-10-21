@@ -4,9 +4,9 @@
  * record rules refuse is never saved.
  */
 import {
-  ACEError, createDelegationCredential, MAX_DELEGATION_LIFETIME, isCaip10Account, isHandle, MAX_DESCRIPTOR_DELEGATIONS,
+  ACEError, HANDLE_RE, createDelegationCredential, handleAddress, MAX_DELEGATION_LIFETIME, isCaip10Account, isHandle, MAX_DESCRIPTOR_DELEGATIONS,
   MAX_DESCRIPTOR_ERC8004, MAX_PAY_ACCOUNTS, validateCard, validateErc8004Binding, type AgentCard, type DescriptorDelegation,
-  type ACEErrorCode, type Erc8004Binding, type JSONObject, type PublishedAgent,
+  type Erc8004Binding, type JSONObject, type PublishedAgent,
 } from '@ace-protocol/sdk';
 import { writeFile } from 'node:fs/promises';
 import { agentView } from '@ace-protocol/sdk/tools';
@@ -17,13 +17,10 @@ import { installManifest, loadBaseConfig, loadSettings, resolveRelayUrl, saveSet
 
 const SET_ONCE = 'handles are set once per identity: once published at a home relay, a handle can never be changed or removed there';
 
-/** A handle's address at `relay`. */
-const addressOf = (handle: string, relay: string) => `@${handle}@${new URL(relay).host}`;
-
 /** The card record a settings file declares at `relay` (the shape `ace_identity` reports). */
 function cardOf(s: NetworkSettings, relay: string) {
   return {
-    ...(s.handle ? { handle: s.handle, address: addressOf(s.handle, relay) } : {}), card: s.card,
+    ...(s.handle ? { handle: s.handle, address: handleAddress(s.handle, relay) } : {}), card: s.card,
     ...(s.pay ? { pay: s.pay } : {}), contact: s.contact, listed: s.listed,
   };
 }
@@ -40,7 +37,7 @@ function publishedAt(s: NetworkSettings, relay: string): NetworkSettings {
  * with a path never gets here with a handle: the SDK refuses to sign that card record).
  */
 function noteClaim(s: NetworkSettings, relay: string): void {
-  if (s.handle && s.handleHome !== relay) console.error(`${addressOf(s.handle, relay)} is yours for good — handles never change`);
+  if (s.handle && s.handleHome !== relay) console.error(`${handleAddress(s.handle, relay)} is yours for good — handles never change`);
 }
 
 /**
@@ -52,7 +49,7 @@ export function explainRefusal(err: unknown, s: NetworkSettings, relay: string, 
   if (!(err instanceof ACEError) || err.code !== 'relay_rejected') return err;
   const opts = { cause: err, ...(err.status !== undefined ? { status: err.status } : {}), relayCode: err.relayCode };
   if (err.relayCode === 'handle_taken' && s.handle) {
-    return new ACEError('handle_taken' as ACEErrorCode, `${addressOf(s.handle, relay)} belongs to another identity; choose another with --handle`, opts);
+    return new ACEError('handle_taken', `${handleAddress(s.handle, relay)} belongs to another identity; choose another with --handle`, opts);
   }
   if (err.relayCode === 'invalid_argument' && handleInvolved) {
     return new ACEError('invalid_argument', `${relay} refused the card record (${err.detail}): ${SET_ONCE}. `
@@ -135,10 +132,10 @@ export async function runConfigure(o: CommonOptions & ConfigureFlags) {
   const hadHandle = s.handle !== undefined;
   if (o.handle !== undefined) {
     const want = o.handle === '' ? undefined : o.handle;
-    if (want !== undefined && !isHandle(want)) throw new ACEError('invalid_argument', '--handle must match [a-z][a-z0-9_-]{2,31}');
+    if (want !== undefined && !isHandle(want)) throw new ACEError('invalid_argument', `--handle must match ${HANDLE_RE.source}`);
     const relay = resolveRelayUrl(o, await loadBaseConfig(aceDir));
     if (s.handle !== undefined && s.handleHome === relay && want !== s.handle) {
-      throw new ACEError('invalid_argument', `${SET_ONCE}; this identity's handle at ${relay} is ${addressOf(s.handle, relay)}`);
+      throw new ACEError('invalid_argument', `${SET_ONCE}; this identity's handle at ${relay} is ${handleAddress(s.handle, relay)}`);
     }
     if (want === undefined) { delete s.handle; delete s.handleHome; } else if (want !== s.handle) { s.handle = want; delete s.handleHome; }
   }
