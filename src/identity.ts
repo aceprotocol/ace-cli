@@ -121,7 +121,7 @@ async function restoreCardRecord(o: CommonOptions, aceId: string): Promise<void>
   const aceDir = aceDirOf(o);
   const relay = resolveRelayUrl(o, await loadBaseConfig(aceDir));
   let r;
-  try { r = (await relayClient(o, relay).card(aceId)).card; } catch (err) {
+  try { r = (await relayClient(o, relay).card(aceId)).record; } catch (err) {
     if (err instanceof ACEError && err.code === 'unknown_peer') return; // never published there
     console.error(`WARNING: cannot read the card record of ${aceId} (${(err as Error).message}); configure its handle, if it has one, before publishing (ace network configure --handle <name>).`);
     return;
@@ -277,7 +277,7 @@ export async function runKeyRecover(o: InstallOptions & { aceId: string; rootFil
     const relay = relayClient(o, resolveRelayUrl(o, await loadBaseConfig(aceDirOf(o)).catch(() => null)));
     try { kel = (await relay.getDescriptor(o.aceId)).kel; } catch (err) {
       // A card record does not expire, so it still carries the log after the descriptor lapsed.
-      try { kel = (await relay.card(o.aceId)).kel; } catch {
+      try { kel = (await relay.card(o.aceId)).kelState.events; } catch {
         throw new Error(`cannot read the descriptor or card record of ${o.aceId} (${(err as Error).message}); pass --descriptor-file`, { cause: err });
       }
     }
