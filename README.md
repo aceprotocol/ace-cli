@@ -48,8 +48,7 @@ keeps the cards carrying that tag, `--cursor` continues). An entry is not a desc
 `address`) to verify what it declares before you `connect`. A typed address may omit the leading `@` and use any case.
 
 `lookup` prints `{agent, card}`: the verified descriptor and card record (`home`, `handle`, `card`, `pay`, `contact`,
-`listed`; no `card` when the peer has none, which counts as closed and unlisted). A `network.json` written by CLI 0.4 or
-earlier with `visibility` still loads: `public` becomes `--contact open --listed`, `private` `--contact closed --no-listed`; a card `name` saved by an earlier CLI is dropped on load.
+`listed`; no `card` when the peer has none, which counts as closed and unlisted).
 
 `connect` resolves a handle and prints `{status, aceId, messageId, profile}` (the peer's ACE ID and the request's message ID).
 `connect --wait <seconds>` then receives (like `ace inbox`, or beside a running receiver reads the state it keeps)

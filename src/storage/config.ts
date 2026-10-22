@@ -87,17 +87,12 @@ export const DEFAULT_SETTINGS: NetworkSettings = {
   card: {}, contact: 'closed', listed: false, profiles: ['text'], acceptProfiles: [], delegations: [], erc8004: [],
 };
 
-/**
- * network.json with defaults. A file written before card records (CLI ≤ 0.4) carries `visibility`: `public` reads as
- * `contact: open` + `listed: true`, `private` as `contact: closed` + `listed: false` (the next save drops it).
- */
+/** network.json with defaults. */
 export async function loadSettings(dir: string): Promise<NetworkSettings> {
   const s = await readJson(dir, 'network.json');
   if (s === null) return structuredClone(DEFAULT_SETTINGS);
   if (!isObj(s)) throw new Error(`${join(dir, 'network.json')} is invalid`);
-  const { visibility, ...rest } = s;
-  const legacy = visibility === 'public' ? { contact: 'open', listed: true } : visibility === 'private' ? { contact: 'closed', listed: false } : {};
-  return { ...structuredClone(DEFAULT_SETTINGS), ...legacy, ...rest } as NetworkSettings;
+  return { ...structuredClone(DEFAULT_SETTINGS), ...s } as NetworkSettings;
 }
 
 export async function saveSettings(dir: string, s: NetworkSettings): Promise<void> { await writeJson(dir, 'network.json', s); }

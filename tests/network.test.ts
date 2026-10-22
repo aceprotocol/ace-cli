@@ -128,21 +128,6 @@ describe('ace network', () => {
     expect(explainRefusal(refusal(), base, R, true)).toMatchObject({ code: 'invalid_argument', message: expect.stringMatching(/set once/) });
   });
 
-  it('a network.json written with visibility loads as contact + listed', async () => {
-    const relay = new FakeRelay();
-    const pub = await makeHome(ROOT, 'legacy-public', relay);
-    await writeFile(join(pub.dir, 'network.json'), JSON.stringify({ visibility: 'public', handle: 'legacy', card: { description: 'Kept' }, profiles: ['text'] }), { mode: 0o600 });
-    expect(await pub.run('network', 'publish')).toMatchObject({ handle: 'legacy', contact: 'open', listed: true, card: { description: 'Kept' } });
-    expect(relay.cards.get(pub.aceId)!.card).toMatchObject({ handle: 'legacy', contact: 'open', listed: true });
-    const priv = await makeHome(ROOT, 'legacy-private', relay);
-    await writeFile(join(priv.dir, 'network.json'), JSON.stringify({ visibility: 'private' }), { mode: 0o600 });
-    const out = await priv.run('network', 'configure', '--description', 'Quiet');
-    expect(out).toMatchObject({ contact: 'closed', listed: false, card: { description: 'Quiet' } });
-    const saved = JSON.parse(await readFile(join(priv.dir, 'network.json'), 'utf8'));
-    expect(saved).toMatchObject({ contact: 'closed', listed: false });
-    expect(saved.visibility).toBeUndefined();
-  });
-
   it('installs a third-party profile manifest and lists message digests', async () => {
     const relay = new FakeRelay();
     const a = await makeHome(ROOT, 'profiles', relay);
