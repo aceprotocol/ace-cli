@@ -72,9 +72,9 @@ describe('ace listen and ace mcp', () => {
       expect((await mcp.callTool({ name: 'ace_threads', arguments: {} })).isError).toBe(true);
 
       // settings changes are picked up by the running receiver
-      await alice.run('network', 'configure', '--name', 'Alice Two');
-      await waitFor(() => relay.cards.get(alice.aceId)?.card.card.name === 'Alice Two');
-      await waitFor(async () => text(await mcp.callTool({ name: 'ace_identity', arguments: {} })).card.name === 'Alice Two');
+      await alice.run('network', 'configure', '--description', 'Alice Two');
+      await waitFor(() => relay.cards.get(alice.aceId)?.card.card.description === 'Alice Two');
+      await waitFor(async () => text(await mcp.callTool({ name: 'ace_identity', arguments: {} })).card.description === 'Alice Two');
 
       // key changes need the receiver stopped
       await expect(alice.run('key', 'delegate')).rejects.toThrow(/stop it first/);

@@ -105,7 +105,6 @@ export interface ConfigureFlags {
   listed?: boolean;
   /** CAIP-10 accounts; an empty list clears. */
   pay?: string[];
-  name?: string;
   description?: string;
   image?: string;
   tags?: string[];
@@ -132,7 +131,7 @@ export async function runConfigure(o: CommonOptions & ConfigureFlags) {
   const hadHandle = s.handle !== undefined;
   if (o.handle !== undefined) {
     const want = o.handle === '' ? undefined : o.handle;
-    if (want !== undefined && !isHandle(want)) throw new ACEError('invalid_argument', `--handle must match ${HANDLE_RE.source}`);
+    if (want !== undefined && !isHandle(want)) throw new ACEError('invalid_argument', `--handle must be 3-32 characters matching ${HANDLE_RE.source}`);
     const relay = resolveRelayUrl(o, await loadBaseConfig(aceDir));
     if (s.handle !== undefined && s.handleHome === relay && want !== s.handle) {
       throw new ACEError('invalid_argument', `${SET_ONCE}; this identity's handle at ${relay} is ${handleAddress(s.handle, relay)}`);
@@ -156,7 +155,7 @@ export async function runConfigure(o: CommonOptions & ConfigureFlags) {
     }
   }
   const card: AgentCard = { ...s.card };
-  for (const k of ['name', 'description', 'image'] as const) {
+  for (const k of ['description', 'image'] as const) {
     if (o[k] === '') delete card[k]; else if (o[k] !== undefined) card[k] = o[k];
   }
   if (o.tags !== undefined) { if (o.tags.length) card.tags = o.tags; else delete card.tags; }

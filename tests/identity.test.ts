@@ -167,14 +167,14 @@ describe('ace key', () => {
     const tmp = await makeHome(ROOT, 'recover-handle-tmp', relay);
     const { digest } = await tmp.run('key', 'next-root', '--out', nextFile);
     const lost = await makeHome(ROOT, 'recover-handle-lost', relay, ['--next-root', digest]);
-    await lost.run('network', 'configure', '--handle', 'alice', '--contact', 'open', '--listed', '--name', 'Alice', '--pay', 'eip155:8453:0x0000000000000000000000000000000000000001');
+    await lost.run('network', 'configure', '--handle', 'alice', '--contact', 'open', '--listed', '--description', 'Alice', '--pay', 'eip155:8453:0x0000000000000000000000000000000000000001');
     const fresh = await makeHome(ROOT, 'recover-handle-new', relay);
     const second = Math.floor(Date.now() / 1000);
     while (Math.floor(Date.now() / 1000) === second) await new Promise((r) => setTimeout(r, 20));
     expect(await fresh.run('key', 'recover', lost.aceId, '--root-file', nextFile, '--keystore', 'file', '--force')).toMatchObject({ published: true });
     expect(relay.kels.get(lost.aceId)!.seq).toBe(2);
     expect(relay.cards.get(lost.aceId)!.card).toMatchObject({ handle: 'alice', contact: 'closed', listed: false, card: {} });
-    expect(vi.mocked(console.error).mock.calls.flat().join('\n')).toMatch(/"name":"Alice".*re-declare/s);
+    expect(vi.mocked(console.error).mock.calls.flat().join('\n')).toMatch(/"description":"Alice".*re-declare/s);
     await expect(fresh.run('network', 'configure', '--handle', 'bob')).rejects.toThrow(/set once/);
   });
 

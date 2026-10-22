@@ -106,7 +106,6 @@ export function buildProgram(env: CliEnv = {}): Command {
     .option('--listed', 'Card record: list this identity in the home relay\'s directory')
     .option('--no-listed', 'Card record: do not list it (default)')
     .option('--pay <accounts>', 'Card record: CAIP-10 accounts to be paid at, comma-separated, at most 8 ("" clears)', list)
-    .option('--name <name>', 'Card: display name ("" clears)')
     .option('--description <text>', 'Card: one-line description ("" clears)')
     .option('--image <url>', 'Card: image URL ("" clears)')
     .option('--tags <tags>', 'Card: comma-separated tags', list)
@@ -123,11 +122,12 @@ export function buildProgram(env: CliEnv = {}): Command {
       const { loadSettings } = await import('./storage/config.js');
       return ops.profiles(o.aceDir!, await loadSettings(o.aceDir!));
     }));
-  net.command('discover').description('Browse the home relay\'s public directory')
-    .option('--profile <id>', 'Only agents declaring this profile')
+  net.command('discover').description('Browse the home relay\'s public directory: listed cards (handle address, description, tags, ACE ID); lookup an entry before connecting')
+    .option('--tag <tag>', 'Only cards carrying this tag')
+    .option('--profile <id>', 'Only agents declaring this profile (the relay\'s hint; lookup shows what the descriptor declares)')
     .option('--cursor <cursor>', 'Continuation')
     .option('--limit <n>', 'Page size (≤ 100)', positiveInt)
-    .action(action((o) => sendTool(o, 'ace_network', defined({ action: 'discover', profile: o.profile, cursor: o.cursor, limit: o.limit }))));
+    .action(action((o) => withAgent(o, 'send', (a) => ops.discover(a, defined({ tag: o.tag, profile: o.profile, cursor: o.cursor, limit: o.limit })))));
   net.command('lookup <target>').description('Resolve an ACE ID or @handle@relay-host: its verified descriptor and card record (handle, card, pay, contact, listed)')
     .action(action((o, target: string) => sendTool(o, 'ace_network', { action: 'lookup', peer: target })));
   net.command('import <file>').description('Import a shared descriptor or an invitation {agent, permit}')
@@ -139,7 +139,8 @@ export function buildProgram(env: CliEnv = {}): Command {
   net.command('invite <peer>').description('Invite one peer (ACE ID, @handle@relay or its shared descriptor file) to contact this agent; prints {agent, permit} to share privately')
     .option('--profile <id>', 'Profile of the relationship (default ace:text:1)')
     .action(action(async (o, peer: string) => {
-      const named = /^(ace:|@)/.test(peer);
+      // An ACE ID or a handle address (the leading @ optional); anything else is a descriptor file.
+      const named = /^(ace:|@)/.test(peer) || /^[A-Za-z0-9-]+@[A-Za-z0-9.-]+(?::[0-9]+)?$/.test(peer);
       const target = named ? { peer } : { source: await readBoundedJson('invite', peer, 2 * 1024 * 1024) as JSONObject };
       try {
         return (await sendTool(o, 'ace_network', defined({ action: 'invite', ...target, profile: o.profile }))).invitation; // the document to share

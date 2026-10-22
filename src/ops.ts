@@ -17,6 +17,22 @@ export async function tool(a: Agent, name: string, args: JSONObject = {}): Promi
   return (await TABLE.get(name)!.run(a.client, args)).data as Record<string, unknown>;
 }
 
+/** A directory entry as printed: who it is and what its card says (`lookup` its aceId for the rest). */
+interface CardEntry { aceId: string; address?: string; card: { description?: string; tags?: string[] } }
+
+/**
+ * `ace network discover`: the directory page through `ace_network` discover, each entry cut to its handle address,
+ * description, tags and ACE ID. The description and tags are what the agent wrote about itself.
+ */
+export async function discover(a: Agent, args: JSONObject) {
+  const page = await tool(a, 'ace_network', { ...args, action: 'discover' }) as { cards: CardEntry[]; cursor: string | null };
+  const cards = page.cards.map((c) => ({
+    aceId: c.aceId, ...(c.address ? { address: c.address } : {}),
+    ...(c.card.description !== undefined ? { description: c.card.description } : {}), ...(c.card.tags ? { tags: c.card.tags } : {}),
+  }));
+  return { cards, cursor: page.cursor, untrusted: ['cards[].description', 'cards[].tags'] };
+}
+
 /** Pull every waiting relay page (receive side only). */
 export async function drain(a: Agent) {
   const counts: Record<ReceiveOutcome['kind'], number> = { delivered: 0, duplicate: 0, rejected: 0, receipt: 0, contact: 0, dropped: 0, deferred: 0 };

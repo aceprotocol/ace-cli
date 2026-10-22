@@ -66,7 +66,7 @@ export interface NetworkSettings {
   handle?: string;
   /** The home relay `handle` was published at (recorded after a successful publish); the handle is fixed there. */
   handleHome?: string;
-  /** Card record: the presentation card. */
+  /** Card record: the discovery card (description, image, tags). */
   card: AgentCard;
   /** Card record: CAIP-10 accounts this agent asks to be paid at. */
   pay?: string[];

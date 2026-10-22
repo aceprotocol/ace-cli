@@ -21,11 +21,11 @@ describe('ace network', () => {
     const bob = await makeHome(ROOT, 'cfg-bob', relay);
     const registry = 'eip155:8453:0x8004a169fb4a3325136eb29fa0ceb6d2e539a432';
     const pay = ['eip155:8453:0x1111111111111111111111111111111111111111', 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp:9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin'];
-    const published = await alice.run('network', 'configure', '--contact', 'open', '--listed', '--handle', 'alice', '--name', 'Alice',
+    const published = await alice.run('network', 'configure', '--contact', 'open', '--listed', '--handle', 'alice',
       '--description', 'Translates', '--tags', 'translation,legal', '--pay', pay.join(','), '--profiles', 'text,commerce', '--erc8004', `${registry}:42`,
       '--ext', JSON.stringify({ 'ace:commerce:1': { settlement: [{ method: 'stripe-link' }] } }));
     expect(published).toMatchObject({ aceId: alice.aceId, handle: 'alice', address: '@alice@relay.test', contact: 'open', listed: true, pay,
-      card: { name: 'Alice', description: 'Translates', tags: ['translation', 'legal'] },
+      card: { description: 'Translates', tags: ['translation', 'legal'] },
       profiles: [{ id: 'ace:text:1' }, { id: 'ace:commerce:1' }], erc8004: [{ agentRegistry: registry, agentId: '42' }] });
     expect(relay.descriptors.get(alice.aceId)!.descriptor.ext).toEqual({ 'ace:commerce:1': { settlement: [{ method: 'stripe-link' }] } });
     expect(relay.cards.get(alice.aceId)!.card).toMatchObject({ home: 'https://relay.test', handle: 'alice', contact: 'open', listed: true, pay });
@@ -36,11 +36,18 @@ describe('ace network', () => {
     expect(await alice.run('network', 'publish')).toMatchObject({ aceId: alice.aceId, handle: 'alice', contact: 'open' });
     expect(relay.registrations).toBe(before);
 
-    expect((await bob.run('network', 'discover', '--profile', 'ace:commerce:1')).agents.map((a: { aceId: string }) => a.aceId)).toEqual([alice.aceId]);
+    // discover prints card entries (address, description, tags, ACE ID), filtered by tag or the profile hint
+    const entry = { aceId: alice.aceId, address: '@alice@relay.test', description: 'Translates', tags: ['translation', 'legal'] };
+    expect(await bob.run('network', 'discover', '--profile', 'ace:commerce:1')).toEqual({ cards: [entry], cursor: null, untrusted: ['cards[].description', 'cards[].tags'] });
+    expect((await bob.run('network', 'discover', '--tag', 'legal')).cards).toEqual([entry]);
+    expect((await bob.run('network', 'discover', '--tag', 'medical')).cards).toEqual([]);
+    await expect(bob.run('network', 'discover', '--tag', 'Legal')).rejects.toMatchObject({ code: 'invalid_argument' });
     // lookup prints the verified card record, by handle and by ACE ID
-    const card = { home: 'https://relay.test', handle: 'alice', card: { name: 'Alice', description: 'Translates' }, pay, contact: 'open', listed: true };
+    const card = { home: 'https://relay.test', handle: 'alice', card: { description: 'Translates' }, pay, contact: 'open', listed: true };
     expect(await bob.run('network', 'lookup', '@alice@relay.test')).toMatchObject({ agent: { aceId: alice.aceId }, card });
     expect(await bob.run('network', 'lookup', alice.aceId)).toMatchObject({ agent: { aceId: alice.aceId }, card });
+    // a typed address may omit the leading @ and use any case
+    expect(await bob.run('network', 'lookup', 'Alice@Relay.Test')).toMatchObject({ agent: { aceId: alice.aceId }, card });
 
     // invalid settings are refused and never saved
     await expect(alice.run('network', 'configure', '--erc8004', 'not-a-binding')).rejects.toThrow(/erc8004/);
@@ -57,7 +64,7 @@ describe('ace network', () => {
     expect(relay.cards.get(alice.aceId)!.card).toMatchObject({ handle: 'alice', contact: 'closed', listed: false });
     expect(relay.cards.get(alice.aceId)!.card.pay).toBeUndefined();
     // closed and unlisted: not in the directory; lookup still shows the card
-    expect((await bob.run('network', 'discover')).agents).toEqual([]);
+    expect((await bob.run('network', 'discover')).cards).toEqual([]);
     expect((await bob.run('network', 'lookup', '@alice@relay.test')).card).toMatchObject({ contact: 'closed', listed: false });
   });
 
@@ -66,9 +73,15 @@ describe('ace network', () => {
     const alice = await makeHome(ROOT, 'once-alice', relay);
     const mallory = await makeHome(ROOT, 'once-mallory', relay);
     await alice.run('network', 'configure', '--handle', 'alice');
-    await alice.run('network', 'configure', '--handle', 'alice', '--name', 'Alice'); // the same handle is fine
+    await alice.run('network', 'configure', '--handle', 'alice', '--description', 'Alice'); // the same handle is fine
     await expect(alice.run('network', 'configure', '--handle', 'alicia')).rejects.toThrow(/set once per identity.*@alice@relay\.test/);
     await expect(alice.run('network', 'configure', '--handle', '')).rejects.toThrow(/set once per identity/);
+    // the handle grammar: 3-32 of a-z, 0-9 and single inner hyphens, starting with a letter; no card name
+    const other = await makeHome(ROOT, 'once-other', relay);
+    for (const bad of ['al', 'a_b', 'al--b', 'alb-', 'Alice', '1ab', 'a'.repeat(33)]) {
+      await expect(other.run('network', 'configure', '--handle', bad)).rejects.toThrow(/3-32 characters/);
+    }
+    await expect(other.run('network', 'configure', '--name', 'Other')).rejects.toThrow(/unknown option/);
     expect(JSON.parse(await readFile(join(alice.dir, 'network.json'), 'utf8')).handle).toBe('alice');
 
     // a taken handle
@@ -76,7 +89,7 @@ describe('ace network', () => {
     await expect(readFile(join(mallory.dir, 'network.json'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' }); // never saved
 
     // settings that lost the handle: the relay's invalid_argument names the rule
-    await writeFile(join(alice.dir, 'network.json'), JSON.stringify({ card: { name: 'Alice' } }), { mode: 0o600 });
+    await writeFile(join(alice.dir, 'network.json'), JSON.stringify({ card: { description: 'Alice' } }), { mode: 0o600 });
     // with no handle in the request nor set before, the relay's answer stands as is
     const lost = await alice.run('network', 'publish').then(() => null, (e: unknown) => e as { code: string; relayCode: string; message: string });
     expect(lost).toMatchObject({ code: 'relay_rejected', relayCode: 'invalid_argument' });
@@ -95,11 +108,11 @@ describe('ace network', () => {
     const notice = /^@alice@relay\.test is yours for good — handles never change$/;
     vi.mocked(console.error).mockClear();
     const lines = () => vi.mocked(console.error).mock.calls.map((c) => String(c[0])).filter((l) => notice.test(l));
-    await alice.run('network', 'configure', '--name', 'Alice');
+    await alice.run('network', 'configure', '--description', 'Alice');
     expect(lines()).toHaveLength(0);
     await alice.run('network', 'configure', '--handle', 'alice');
     expect(lines()).toHaveLength(1);
-    await alice.run('network', 'configure', '--handle', 'alice', '--name', 'Alice A');
+    await alice.run('network', 'configure', '--handle', 'alice', '--description', 'Alice A');
     await alice.run('network', 'publish');
     expect(lines()).toHaveLength(1);
   });
@@ -118,13 +131,13 @@ describe('ace network', () => {
   it('a network.json written with visibility loads as contact + listed', async () => {
     const relay = new FakeRelay();
     const pub = await makeHome(ROOT, 'legacy-public', relay);
-    await writeFile(join(pub.dir, 'network.json'), JSON.stringify({ visibility: 'public', handle: 'legacy', card: { name: 'Old' }, profiles: ['text'] }), { mode: 0o600 });
-    expect(await pub.run('network', 'publish')).toMatchObject({ handle: 'legacy', contact: 'open', listed: true, card: { name: 'Old' } });
+    await writeFile(join(pub.dir, 'network.json'), JSON.stringify({ visibility: 'public', handle: 'legacy', card: { description: 'Kept' }, profiles: ['text'] }), { mode: 0o600 });
+    expect(await pub.run('network', 'publish')).toMatchObject({ handle: 'legacy', contact: 'open', listed: true, card: { description: 'Kept' } });
     expect(relay.cards.get(pub.aceId)!.card).toMatchObject({ handle: 'legacy', contact: 'open', listed: true });
     const priv = await makeHome(ROOT, 'legacy-private', relay);
     await writeFile(join(priv.dir, 'network.json'), JSON.stringify({ visibility: 'private' }), { mode: 0o600 });
-    const out = await priv.run('network', 'configure', '--name', 'Quiet');
-    expect(out).toMatchObject({ contact: 'closed', listed: false, card: { name: 'Quiet' } });
+    const out = await priv.run('network', 'configure', '--description', 'Quiet');
+    expect(out).toMatchObject({ contact: 'closed', listed: false, card: { description: 'Quiet' } });
     const saved = JSON.parse(await readFile(join(priv.dir, 'network.json'), 'utf8'));
     expect(saved).toMatchObject({ contact: 'closed', listed: false });
     expect(saved.visibility).toBeUndefined();

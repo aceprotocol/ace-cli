@@ -166,10 +166,6 @@
               "description": "Card record: CAIP-10 accounts to be paid at, comma-separated, at most 8 (\"\" clears)"
             },
             {
-              "flags": "--name <name>",
-              "description": "Card: display name (\"\" clears)"
-            },
-            {
               "flags": "--description <text>",
               "description": "Card: one-line description (\"\" clears)"
             },
@@ -221,12 +217,16 @@
         },
         {
           "name": "discover",
-          "description": "Browse the home relay's public directory",
+          "description": "Browse the home relay's public directory: listed cards (handle address, description, tags, ACE ID); lookup an entry before connecting",
           "arguments": [],
           "options": [
             {
+              "flags": "--tag <tag>",
+              "description": "Only cards carrying this tag"
+            },
+            {
               "flags": "--profile <id>",
-              "description": "Only agents declaring this profile"
+              "description": "Only agents declaring this profile (the relay's hint; lookup shows what the descriptor declares)"
             },
             {
               "flags": "--cursor <cursor>",
