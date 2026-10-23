@@ -170,7 +170,7 @@ describe('ace mcp tool table', () => {
     const { signingSeq } = await alice.run('key', 'delegate');
     const listener = await startListener({ aceDir: alice.dir, fetch: relay.fetch, relay: RELAY, maintainMs: 200, retryMs: 50, log: () => {}, warn: () => {} });
     try {
-      await waitFor(async () => (await listener.agent().client.admission.get(bob.aceId))?.issued?.seq === signingSeq);
+      await waitFor(async () => (await listener.agent().client.admission.get(bob.aceId))?.issued?.signature.seq === signingSeq);
     } finally {
       await listener.stop();
     }
